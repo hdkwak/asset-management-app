@@ -80,12 +80,17 @@ router.post('/preview', upload.single('file'), async (req: Request, res: Respons
     const db = getDb();
     const ext = getFileExt(file.originalname);
 
-    // Look up preset profile by institution name
+    // Look up profile: prefer file-type-specific match (e.g. 'xls' over 'csv')
     let profile: InstitutionProfileRow | undefined;
     if (institution && institution !== '직접 입력') {
       profile = db
-        .prepare(`SELECT * FROM institution_profiles WHERE institution = ? AND account_type = ? LIMIT 1`)
-        .get(institution, accountType) as InstitutionProfileRow | undefined;
+        .prepare(`SELECT * FROM institution_profiles WHERE institution = ? AND account_type = ? AND file_type = ? LIMIT 1`)
+        .get(institution, accountType, ext) as InstitutionProfileRow | undefined;
+      if (!profile) {
+        profile = db
+          .prepare(`SELECT * FROM institution_profiles WHERE institution = ? AND account_type = ? LIMIT 1`)
+          .get(institution, accountType) as InstitutionProfileRow | undefined;
+      }
     }
 
     const effectiveEncoding  = profile?.encoding ?? encoding;

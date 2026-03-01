@@ -2,12 +2,16 @@ import React, { useState } from 'react';
 import { Settings } from 'lucide-react';
 import { CategoryList } from '../components/categories/CategoryList';
 import { ProfileList } from '../components/settings/ProfileList';
+import { BackupSection } from '../components/settings/BackupSection';
+import { GeneralSettings } from '../components/settings/GeneralSettings';
 
-type Tab = 'categories' | 'profiles';
+type Tab = 'categories' | 'profiles' | 'backup' | 'general';
 
 const TABS: { key: Tab; label: string }[] = [
   { key: 'categories', label: '카테고리 관리' },
   { key: 'profiles',   label: '금융 기관 프로파일' },
+  { key: 'backup',     label: '백업 / 복원' },
+  { key: 'general',    label: '일반 설정' },
 ];
 
 export function SettingsPage() {
@@ -26,7 +30,7 @@ export function SettingsPage() {
           </div>
           <div>
             <h1 className="text-xl font-bold text-gray-900">설정</h1>
-            <p className="text-sm text-gray-500 mt-0.5">카테고리 및 Import 프로파일을 관리합니다.</p>
+            <p className="text-sm text-gray-500 mt-0.5">카테고리, 프로파일, 백업 및 일반 설정을 관리합니다.</p>
           </div>
         </div>
       </header>
@@ -54,6 +58,8 @@ export function SettingsPage() {
         <div className="bg-white rounded-xl border border-gray-200 p-6 max-w-3xl">
           {tab === 'categories' && <CategoryList />}
           {tab === 'profiles'   && <ProfileList />}
+          {tab === 'backup'     && <BackupSection />}
+          {tab === 'general'    && <GeneralSettings />}
         </div>
       </div>
     </main>

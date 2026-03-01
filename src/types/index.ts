@@ -193,8 +193,35 @@ export interface SummaryData {
   totalAssets: number;
   bankAccountCount: number;
   securitiesAccountCount: number;
+  thisMonthIncome: number;
+  thisMonthExpense: number;
+  thisMonthNet: number;
   recentTransactions: RecentTransaction[];
 }
+
+// ── Backup ────────────────────────────────────────────────────────────────────
+
+export interface BackupData {
+  version: 1;
+  exportedAt: string;
+  accounts: Account[];
+  categories: Category[];
+  bank_transactions: BankTransaction[];
+  securities_transactions: SecuritiesTransaction[];
+  institution_profiles: InstitutionProfile[];
+}
+
+export interface RestoreStats {
+  accounts: number;
+  categories: number;
+  bankTx: number;
+  securitiesTx: number;
+  profiles: number;
+}
+
+// ── App Settings ──────────────────────────────────────────────────────────────
+
+export type AppSettings = Record<string, string>;
 
 // ── Institution Profiles ──────────────────────────────────────────────────────
 

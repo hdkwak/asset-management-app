@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Landmark, TrendingUp, Wallet, ArrowUpRight, ArrowDownRight } from 'lucide-react';
+import { Landmark, TrendingUp, Wallet, ArrowUpRight, ArrowDownRight, TrendingDown } from 'lucide-react';
 import type { SummaryData } from '../../types';
 import { getSummary } from '../../api/client';
 
@@ -61,7 +61,7 @@ export function Dashboard() {
       <h2 className="text-lg font-bold text-gray-900 mb-4">자산 요약</h2>
 
       {/* Summary cards */}
-      <div className="grid grid-cols-3 gap-4 mb-8">
+      <div className="grid grid-cols-2 xl:grid-cols-4 gap-4 mb-8">
         <SummaryCard
           label="총 자산"
           value={fmt(summary.totalAssets)}
@@ -82,6 +82,13 @@ export function Dashboard() {
           sub={`${summary.securitiesAccountCount}개 계좌`}
           icon={<TrendingUp size={18} />}
           color="#7C3AED"
+        />
+        <SummaryCard
+          label="이번 달 순수익"
+          value={(summary.thisMonthNet ?? 0) >= 0 ? `+${fmt(summary.thisMonthNet ?? 0)}` : `-${fmt(summary.thisMonthNet ?? 0)}`}
+          sub={`수입 ${fmt(summary.thisMonthIncome ?? 0)} · 지출 ${fmt(summary.thisMonthExpense ?? 0)}`}
+          icon={(summary.thisMonthNet ?? 0) >= 0 ? <TrendingUp size={18} /> : <TrendingDown size={18} />}
+          color={(summary.thisMonthNet ?? 0) >= 0 ? '#059669' : '#DC2626'}
         />
       </div>
 

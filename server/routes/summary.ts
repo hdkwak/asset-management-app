@@ -22,6 +22,18 @@ router.get('/', (_req, res) => {
     .prepare(`SELECT COUNT(*) as cnt FROM accounts WHERE type = 'securities'`)
     .get() as { cnt: number };
 
+  // This-month income / expense KPI (bank transactions only)
+  const thisMonthStart = new Date();
+  thisMonthStart.setDate(1);
+  const thisMonthStr = thisMonthStart.toISOString().slice(0, 7); // 'YYYY-MM'
+  const monthlyKpi = db.prepare(`
+    SELECT
+      COALESCE(SUM(CASE WHEN amount > 0 THEN amount ELSE 0 END), 0) as income,
+      COALESCE(SUM(CASE WHEN amount < 0 THEN ABS(amount) ELSE 0 END), 0) as expense
+    FROM bank_transactions
+    WHERE strftime('%Y-%m', date) = ?
+  `).get(thisMonthStr) as { income: number; expense: number };
+
   const recentBank = db.prepare(`
     SELECT bt.id, bt.date, bt.amount,
            COALESCE(NULLIF(bt.payee, ''), '(거래)') as description,
@@ -30,7 +42,7 @@ router.get('/', (_req, res) => {
     FROM bank_transactions bt
     JOIN accounts a ON a.id = bt.account_id
     ORDER BY bt.date DESC, bt.id DESC
-    LIMIT 10
+    LIMIT 7
   `).all() as Record<string, unknown>[];
 
   const recentSec = db.prepare(`
@@ -41,7 +53,7 @@ router.get('/', (_req, res) => {
     FROM securities_transactions st
     JOIN accounts a ON a.id = st.account_id
     ORDER BY st.date DESC, st.id DESC
-    LIMIT 10
+    LIMIT 7
   `).all() as Record<string, unknown>[];
 
   const recentTransactions = [...recentBank, ...recentSec]
@@ -50,7 +62,7 @@ router.get('/', (_req, res) => {
       const kb = `${b.date}|${b.created_at}`;
       return (kb as string).localeCompare(ka as string);
     })
-    .slice(0, 10);
+    .slice(0, 7);
 
   res.json({
     totalBankBalance: bankRow.total,
@@ -58,6 +70,9 @@ router.get('/', (_req, res) => {
     totalAssets: bankRow.total + secRow.total,
     bankAccountCount: bankCountRow.cnt,
     securitiesAccountCount: secCountRow.cnt,
+    thisMonthIncome: monthlyKpi.income,
+    thisMonthExpense: monthlyKpi.expense,
+    thisMonthNet: monthlyKpi.income - monthlyKpi.expense,
     recentTransactions,
   });
 });

@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from 'react';
-import { Landmark, TrendingUp, PlusCircle, Upload } from 'lucide-react';
+import React, { useState, useEffect, useRef } from 'react';
+import { Landmark, TrendingUp, PlusCircle, Upload, Download } from 'lucide-react';
 import { useAccounts } from '../../hooks/useAccounts';
 import { useTransactions } from '../../hooks/useTransactions';
 import { TransactionTable } from '../transactions/TransactionTable';
@@ -10,9 +10,16 @@ import { Dashboard } from '../dashboard/Dashboard';
 import { BankAnalytics } from '../analytics/BankAnalytics';
 import { SettingsPage } from '../../pages/SettingsPage';
 import { ImportHistoryPanel } from '../import/ImportHistory';
-import type { AnyTransaction, Category, CreateTransactionPayload, AccountType, FilterState } from '../../types';
+import type { AnyTransaction, BankTransaction, SecuritiesTransaction, Category, CreateTransactionPayload, AccountType, FilterState } from '../../types';
 import { defaultFilters } from '../../types';
-import { getCategories, bulkUpdateCategory } from '../../api/client';
+import { getCategories, bulkUpdateCategory, getTransactions } from '../../api/client';
+import {
+  exportBankTransactionsToCSV,
+  exportBankTransactionsToExcel,
+  exportSecuritiesTransactionsToCSV,
+  exportSecuritiesTransactionsToExcel,
+} from '../../utils/export';
+import { useToast } from '../common/Toast';
 
 const PAGE_SIZE = 50;
 
@@ -64,6 +71,9 @@ export function MainContent() {
   const [addingTx, setAddingTx] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
   const [activeTab, setActiveTab] = useState<'transactions' | 'history'>('transactions');
+  const [exportMenuOpen, setExportMenuOpen] = useState(false);
+  const exportMenuRef = useRef<HTMLDivElement>(null);
+  const { addToast } = useToast();
 
   const handleBulkCategory = async (ids: number[], categoryId: number | null) => {
     await bulkUpdateCategory(ids, categoryId);
@@ -106,6 +116,39 @@ export function MainContent() {
   const handleResetFilters = () => {
     setFilters(defaultFilters);
     setPage(1);
+  };
+
+  const handleExport = async (format: 'csv' | 'xlsx') => {
+    setExportMenuOpen(false);
+    if (!currentAccountType) return;
+    try {
+      const result = await getTransactions({
+        accountId: selectedAccount?.id ?? null,
+        group: isGroupView ? groupAccountType : null,
+        filters,
+        page: 1,
+        limit: 9999,
+        sortBy,
+        sortOrder,
+      });
+      const rows = result.data;
+      const accountName = selectedAccount?.name ?? (groupAccountType === 'bank' ? '은행전체' : '증권전체');
+      const dateStr = new Date().toISOString().slice(0, 10);
+      const base = `${accountName}_${dateStr}`;
+
+      if (currentAccountType === 'bank') {
+        const bankRows = rows as BankTransaction[];
+        if (format === 'csv') exportBankTransactionsToCSV(bankRows, `${base}.csv`);
+        else exportBankTransactionsToExcel(bankRows, `${base}.xlsx`);
+      } else {
+        const secRows = rows as SecuritiesTransaction[];
+        if (format === 'csv') exportSecuritiesTransactionsToCSV(secRows, `${base}.csv`);
+        else exportSecuritiesTransactionsToExcel(secRows, `${base}.xlsx`);
+      }
+      addToast(`${rows.length}건 내보내기 완료`, 'success');
+    } catch (err) {
+      addToast(`내보내기 실패: ${(err as Error).message}`, 'error');
+    }
   };
 
   // ── Analytics / Settings pages ─────────────────────────────────────────────
@@ -182,6 +225,33 @@ export function MainContent() {
 
           {/* Action buttons */}
           <div className="flex gap-2 flex-shrink-0">
+            {/* Export dropdown */}
+            {currentAccountType && (
+              <div className="relative" ref={exportMenuRef}>
+                <button
+                  onClick={() => setExportMenuOpen((v) => !v)}
+                  className="flex items-center gap-1.5 px-3 py-2 text-sm font-medium text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
+                >
+                  <Download size={15} /> Export
+                </button>
+                {exportMenuOpen && (
+                  <div className="absolute right-0 top-9 z-30 bg-white border border-gray-200 rounded-lg shadow-lg py-1 min-w-[140px]">
+                    <button
+                      onClick={() => handleExport('csv')}
+                      className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-50"
+                    >
+                      CSV 다운로드
+                    </button>
+                    <button
+                      onClick={() => handleExport('xlsx')}
+                      className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-50"
+                    >
+                      Excel 다운로드
+                    </button>
+                  </div>
+                )}
+              </div>
+            )}
             {selectedAccount && (
               <button
                 onClick={() => setImportOpen(true)}

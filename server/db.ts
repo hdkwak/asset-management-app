@@ -97,6 +97,12 @@ function initSchema(database: DatabaseSync): void {
       error_message  TEXT,
       imported_at    TEXT DEFAULT (datetime('now'))
     );
+
+    CREATE TABLE IF NOT EXISTS app_settings (
+      key        TEXT PRIMARY KEY,
+      value      TEXT NOT NULL,
+      updated_at TEXT DEFAULT (datetime('now'))
+    );
   `);
 
   // ── Migration: add balance column to bank_transactions if missing ──────────
@@ -180,12 +186,12 @@ function initSchema(database: DatabaseSync): void {
   database.exec('BEGIN');
   try {
     const findPreset = database.prepare(
-      'SELECT id FROM institution_profiles WHERE institution = ? AND account_type = ? AND is_preset = 1'
+      'SELECT id FROM institution_profiles WHERE institution = ? AND account_type = ? AND file_type = ? AND is_preset = 1'
     );
     const insertProfile = database.prepare(
       `INSERT INTO institution_profiles
-         (institution, account_type, encoding, column_map, amount_sign, skip_rows, is_preset)
-       VALUES (?, ?, ?, ?, ?, ?, 1)`
+         (institution, account_type, encoding, column_map, amount_sign, skip_rows, is_preset, file_type)
+       VALUES (?, ?, ?, ?, ?, ?, 1, ?)`
     );
     const updateProfile = database.prepare(
       `UPDATE institution_profiles
@@ -199,30 +205,39 @@ function initSchema(database: DatabaseSync): void {
       encoding: string,
       columnMap: object,
       amountSign: string,
-      skipRows = 0
+      skipRows = 0,
+      fileType = 'csv'
     ) {
-      const existing = findPreset.get(institution, accountType) as { id: number } | undefined;
+      const existing = findPreset.get(institution, accountType, fileType) as { id: number } | undefined;
       const mapStr = JSON.stringify(columnMap);
       if (existing) {
         updateProfile.run(encoding, mapStr, amountSign, skipRows, existing.id);
       } else {
-        insertProfile.run(institution, accountType, encoding, mapStr, amountSign, skipRows);
+        insertProfile.run(institution, accountType, encoding, mapStr, amountSign, skipRows, fileType);
       }
     }
 
     // ── 은행 (bank) ────────────────────────────────────────────────────────────
+    // KB국민은행: CSV export uses 입금(원)/출금(원); XLS (HTML) export uses 입금액/출금액
     upsert('KB국민은행', 'bank', 'utf-8',
       { date: '거래일시', payee: '적요', amount_in: '입금(원)', amount_out: '출금(원)', balance: '잔액' },
-      'separate');
+      'separate', 0, 'csv');
+    upsert('KB국민은행', 'bank', 'utf-8',
+      { date: '거래일시', payee: '보낸분/받는분', amount_in: '입금액', amount_out: '출금액', balance: '잔액', note: '적요' },
+      'separate', 0, 'xls');
     upsert('신한은행', 'bank', 'utf-8',
       { date: '거래일자', payee: '거래내용', amount_in: '입금금액', amount_out: '출금금액', balance: '잔액', note: '메모' },
       'separate');
     upsert('하나은행', 'bank', 'utf-8',
       { date: '거래일시', payee: '거래내역', amount_in: '입금금액', amount_out: '출금금액', balance: '잔액', note: '메모' },
       'separate');
+    // 우리은행: CSV uses 거래일자/입금금액(원)/출금금액(원); XLS uses 거래일시/맡기신금액/찾으신금액
     upsert('우리은행', 'bank', 'utf-8',
       { date: '거래일자', payee: '거래내용', amount_in: '입금금액(원)', amount_out: '출금금액(원)', balance: '잔액' },
-      'separate');
+      'separate', 0, 'csv');
+    upsert('우리은행', 'bank', 'utf-8',
+      { date: '거래일시', payee: '기재내용', amount_in: '맡기신금액', amount_out: '찾으신금액', balance: '거래후 잔액', note: '적요' },
+      'separate', 0, 'xls');
     upsert('NH농협은행', 'bank', 'utf-8',
       { date: '거래일시', payee: '내용', amount_in: '입금금액', amount_out: '출금금액', balance: '거래후잔액' },
       'separate');

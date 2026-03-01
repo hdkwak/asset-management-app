@@ -14,6 +14,9 @@ import type {
   FilterState,
   SummaryData,
   BankAnalyticsResponse,
+  BackupData,
+  RestoreStats,
+  AppSettings,
 } from '../types';
 
 const BASE = '/api';
@@ -199,3 +202,23 @@ export const updateProfile = (id: number, data: Partial<InstitutionProfile>) =>
 
 export const deleteProfile = (id: number) =>
   request<void>(`/profiles/${id}`, { method: 'DELETE' });
+
+// ── Backup / Restore ──────────────────────────────────────────────────────────
+
+export const exportBackup = () => request<BackupData>('/backup/export', { method: 'POST' });
+
+export const importBackup = (data: BackupData) =>
+  request<{ success: boolean; stats: RestoreStats }>('/backup/import', {
+    method: 'POST',
+    body: JSON.stringify(data),
+  });
+
+// ── App Settings ──────────────────────────────────────────────────────────────
+
+export const getAppSettings = () => request<AppSettings>('/settings');
+
+export const updateAppSetting = (key: string, value: string) =>
+  request<{ key: string; value: string }>(`/settings/${key}`, {
+    method: 'PUT',
+    body: JSON.stringify({ value }),
+  });

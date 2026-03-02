@@ -73,6 +73,7 @@ export function useTransactions({
     debouncedFilters.dateFrom, debouncedFilters.dateTo,
     debouncedFilters.amountMin, debouncedFilters.amountMax,
     debouncedFilters.categoryId, debouncedFilters.incomeType, debouncedFilters.secType,
+    debouncedFilters.securityCode,
     page, limit, sortBy, sortOrder,
   ]);
 

@@ -8,7 +8,12 @@ const router = Router();
 // ── GET /api/holdings?account_id=<id>|all ────────────────────────────────────
 router.get('/', (req: Request, res: Response) => {
   const db = getDb();
-  const accountIdParam = req.query.account_id as string | undefined;
+  const q = req.query as Record<string, string>;
+  const accountIdParam = q.account_id;
+  const includeZero = q.include_zero === 'true';
+  const search = q.search?.trim() ?? '';
+  const sortByParam = q.sort_by ?? '';
+  const sortOrderParam = (q.sort_order ?? 'asc') as 'asc' | 'desc';
 
   let rows: Record<string, unknown>[];
 
@@ -57,7 +62,7 @@ router.get('/', (req: Request, res: Response) => {
     };
   });
 
-  // 요약
+  // 요약 (전체 보유 종목 기준)
   const totalBuyAmount    = holdings.reduce((s, h) => s + h._total_buy_amount, 0);
   const totalEvalAmount   = holdings.reduce((s, h) => s + h.eval_amount, 0);
   const totalUnrealized   = totalBuyAmount > 0 ? totalEvalAmount - totalBuyAmount : 0;
@@ -69,8 +74,33 @@ router.get('/', (req: Request, res: Response) => {
     .sort()
     .reverse()[0] ?? null;
 
+  // 필터링: 보유중 종목만 or 전체
+  let filtered = includeZero ? holdings : holdings.filter((h) => Number(h.quantity) > 0);
+
+  // 종목명/코드 검색
+  if (search) {
+    filtered = filtered.filter(
+      (h) =>
+        String(h.security_name).includes(search) ||
+        String(h.security_code).includes(search)
+    );
+  }
+
+  // 정렬
+  if (sortByParam) {
+    const sortable = ['eval_amount', 'unrealized_pnl', 'unrealized_pnl_rate', 'realized_pnl',
+      'total_pnl', 'quantity', 'avg_buy_price', 'current_price', 'total_buy_amount'];
+    if (sortable.includes(sortByParam)) {
+      filtered.sort((a, b) => {
+        const av = Number(a[sortByParam]) || 0;
+        const bv = Number(b[sortByParam]) || 0;
+        return sortOrderParam === 'asc' ? av - bv : bv - av;
+      });
+    }
+  }
+
   res.json({
-    holdings,
+    holdings: filtered,
     summary: {
       total_buy_amount:          totalBuyAmount,
       total_eval_amount:         totalEvalAmount,

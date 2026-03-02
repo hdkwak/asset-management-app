@@ -161,6 +161,7 @@ export interface FilterState {
   incomeType: '' | 'income' | 'expense';
   // securities
   secType: string;
+  securityCode: string;
 }
 
 export const defaultFilters: FilterState = {
@@ -172,6 +173,7 @@ export const defaultFilters: FilterState = {
   categoryId: null,
   incomeType: '',
   secType: '',
+  securityCode: '',
 };
 
 // ── Summary / Dashboard ───────────────────────────────────────────────────────

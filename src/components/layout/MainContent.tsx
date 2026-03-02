@@ -10,6 +10,7 @@ import { Dashboard } from '../dashboard/Dashboard';
 import { BankAnalytics } from '../analytics/BankAnalytics';
 import { SettingsPage } from '../../pages/SettingsPage';
 import { ImportHistoryPanel } from '../import/ImportHistory';
+import { SecuritiesAccountPage } from '../securities/SecuritiesAccountPage';
 import type { AnyTransaction, BankTransaction, SecuritiesTransaction, Category, CreateTransactionPayload, AccountType, FilterState } from '../../types';
 import { defaultFilters } from '../../types';
 import { getCategories, bulkUpdateCategory, getTransactions } from '../../api/client';
@@ -45,6 +46,8 @@ export function MainContent() {
   const currentAccountType: AccountType | null =
     selectedAccount?.type ?? groupAccountType ?? null;
 
+  // Skip fetching when an individual securities account is selected (handled by SecuritiesAccountPage)
+  const isSecuritiesAccount = selectedAccount?.type === 'securities';
   const {
     transactions,
     total,
@@ -56,7 +59,7 @@ export function MainContent() {
     editTransaction,
     bulkRemove,
   } = useTransactions({
-    accountId: selectedAccount?.id ?? null,
+    accountId: isSecuritiesAccount ? null : (selectedAccount?.id ?? null),
     groupType: groupAccountType,
     accountType: currentAccountType,
     filters,
@@ -164,6 +167,43 @@ export function MainContent() {
     return (
       <main className="flex-1 flex flex-col bg-slate-50 overflow-auto min-w-0">
         <Dashboard />
+      </main>
+    );
+  }
+
+  // ── Individual securities account → delegate to SecuritiesAccountPage ────────
+  if (selectedAccount && selectedAccount.type === 'securities') {
+    return (
+      <main className="flex-1 flex flex-col bg-slate-50 overflow-auto min-w-0">
+        {/* Account header */}
+        <header className="bg-white border-b border-gray-200 px-6 py-4 flex-shrink-0">
+          <div className="flex items-center gap-4">
+            <div
+              className="w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0"
+              style={{ backgroundColor: selectedAccount.color + '22' }}
+            >
+              <TrendingUp size={20} style={{ color: selectedAccount.color }} />
+            </div>
+            <div className="flex-1 min-w-0">
+              <h1 className="text-xl font-bold text-gray-900 truncate">{selectedAccount.name}</h1>
+              <p className="text-sm text-gray-500 mt-0.5">
+                {selectedAccount.institution}
+                <span className="ml-2 text-xs bg-gray-100 text-gray-500 px-2 py-0.5 rounded-full">
+                  증권 계좌
+                </span>
+              </p>
+            </div>
+            <div className="text-right flex-shrink-0">
+              <p className="text-xs text-gray-500 mb-0.5">예수금 잔고</p>
+              <p className="text-2xl font-bold text-gray-900">{formatBalance(selectedAccount.balance)}</p>
+            </div>
+          </div>
+        </header>
+        <SecuritiesAccountPage
+          account={selectedAccount}
+          categories={categories}
+          onSyncBalance={syncBalance}
+        />
       </main>
     );
   }

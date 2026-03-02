@@ -116,6 +116,8 @@ router.get('/', (req: Request, res: Response) => {
       params.push(`%${search}%`, `%${search}%`, `%${search}%`);
     }
     if (secType) { where.push('t.type = ?'); params.push(secType); }
+    const securityCode = q.security_code ?? '';
+    if (securityCode) { where.push('t.security_code = ?'); params.push(securityCode); }
   }
 
   const whereSQL = where.length ? `WHERE ${where.join(' AND ')}` : '';

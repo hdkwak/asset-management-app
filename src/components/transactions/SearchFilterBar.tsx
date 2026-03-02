@@ -51,7 +51,8 @@ export function SearchFilterBar({ accountType, categories, filters, onChange, on
   const hasActiveFilters =
     filters.search || filters.dateFrom || filters.dateTo ||
     filters.amountMin || filters.amountMax ||
-    filters.categoryId || filters.incomeType || filters.secType;
+    filters.categoryId || filters.incomeType || filters.secType ||
+    filters.securityCode;
 
   const quickBtns: { label: string; type: Parameters<typeof quickDate>[0] }[] = [
     { label: '이번 달', type: 'this-month' },
@@ -96,6 +97,19 @@ export function SearchFilterBar({ accountType, categories, filters, onChange, on
             </button>
           ))}
         </div>
+
+        {/* Security code drill-down chip */}
+        {filters.securityCode && (
+          <span className="flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium bg-blue-50 text-blue-700 border border-blue-200 rounded-lg">
+            종목: {filters.securityCode}
+            <button
+              onClick={() => set({ securityCode: '' })}
+              className="text-blue-400 hover:text-blue-700"
+            >
+              <X size={11} />
+            </button>
+          </span>
+        )}
 
         {/* Reset */}
         {hasActiveFilters && (

@@ -87,6 +87,7 @@ export function getTransactions(query: TransactionQuery): Promise<PaginatedRespo
   if (f.categoryId != null)           p.set('category_id',  String(f.categoryId));
   if (f.incomeType)                   p.set('income_type',  f.incomeType);
   if (f.secType)                      p.set('sec_type',     f.secType);
+  if (f.securityCode)                 p.set('security_code', f.securityCode);
   if (query.page)                     p.set('page',         String(query.page));
   if (query.limit)                    p.set('limit',        String(query.limit));
   if (query.sortBy)                   p.set('sort_by',      query.sortBy);
@@ -229,8 +230,17 @@ export const updateAppSetting = (key: string, value: string) =>
 
 // ── Holdings (Phase 3) ────────────────────────────────────────────────────────
 
-export const getHoldings = (accountId: number | 'all') =>
-  request<HoldingsResponse>(`/holdings?account_id=${accountId}`);
+export const getHoldings = (
+  accountId: number | 'all',
+  opts?: { includeZero?: boolean; search?: string; sortBy?: string; sortOrder?: 'asc' | 'desc' }
+) => {
+  const p = new URLSearchParams({ account_id: String(accountId) });
+  if (opts?.includeZero) p.set('include_zero', 'true');
+  if (opts?.search) p.set('search', opts.search);
+  if (opts?.sortBy) p.set('sort_by', opts.sortBy);
+  if (opts?.sortOrder) p.set('sort_order', opts.sortOrder);
+  return request<HoldingsResponse>(`/holdings?${p}`);
+};
 
 export const recalculateHoldings = (accountId: number) =>
   request<{ success: boolean; account_id: number }>(`/holdings/recalculate?account_id=${accountId}`, {

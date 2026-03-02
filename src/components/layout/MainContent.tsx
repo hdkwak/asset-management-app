@@ -82,7 +82,7 @@ export function MainContent() {
 
   useEffect(() => {
     getCategories().then(setCategories).catch(console.error);
-  }, []);
+  }, [activePage]);
 
   const syncBalance = () => refreshAccounts();
 

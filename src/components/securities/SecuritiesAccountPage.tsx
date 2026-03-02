@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { PlusCircle, Upload } from 'lucide-react';
 import { useTransactions } from '../../hooks/useTransactions';
 import { useHoldings } from '../../hooks/useHoldings';
+import { recalculateHoldings } from '../../api/client';
 import { TransactionTable } from '../transactions/TransactionTable';
 import { TransactionForm } from '../transactions/TransactionForm';
 import { SearchFilterBar } from '../transactions/SearchFilterBar';
@@ -10,6 +11,7 @@ import { ImportHistoryPanel } from '../import/ImportHistory';
 import { SecuritiesAccountHeader } from './SecuritiesAccountHeader';
 import { HoldingsFilterBar } from './HoldingsFilterBar';
 import { HoldingsTable } from './HoldingsTable';
+import { RotateCcw } from 'lucide-react';
 import type {
   Account,
   AnyTransaction,
@@ -104,6 +106,7 @@ export function SecuritiesAccountPage({ account, categories, onSyncBalance }: Pr
   const [holdingsSearch, setHoldingsSearch] = useState('');
   const [holdingsSortBy, setHoldingsSortBy] = useState('');
   const [holdingsSortOrder, setHoldingsSortOrder] = useState<'asc' | 'desc'>('desc');
+  const [recalculating, setRecalculating] = useState(false);
 
   const {
     data: holdingsData,
@@ -123,6 +126,16 @@ export function SecuritiesAccountPage({ account, categories, onSyncBalance }: Pr
   const handleHoldingsSortChange = (col: string, order: 'asc' | 'desc') => {
     setHoldingsSortBy(col);
     setHoldingsSortOrder(order);
+  };
+
+  const handleRecalculate = async () => {
+    setRecalculating(true);
+    try {
+      await recalculateHoldings(account.id);
+      await holdingsRefetch();
+    } finally {
+      setRecalculating(false);
+    }
   };
 
   // Drill-down: click a holding → switch to transactions tab filtered by that security
@@ -185,12 +198,23 @@ export function SecuritiesAccountPage({ account, categories, onSyncBalance }: Pr
             refreshing={refreshing}
             onRefresh={refreshAll}
           />
-          <HoldingsFilterBar
-            includeZero={includeZero}
-            search={holdingsSearch}
-            onIncludeZeroChange={setIncludeZero}
-            onSearchChange={setHoldingsSearch}
-          />
+          <div className="flex items-center justify-between pr-4 bg-white border-b border-gray-200">
+            <HoldingsFilterBar
+              includeZero={includeZero}
+              search={holdingsSearch}
+              onIncludeZeroChange={setIncludeZero}
+              onSearchChange={setHoldingsSearch}
+            />
+            <button
+              onClick={handleRecalculate}
+              disabled={recalculating}
+              className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-gray-600 border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50 transition-colors whitespace-nowrap"
+              title="거래 내역 기반으로 보유 수량/평균단가 재계산"
+            >
+              <RotateCcw size={12} className={recalculating ? 'animate-spin' : ''} />
+              {recalculating ? '재계산 중...' : '보유종목 재계산'}
+            </button>
+          </div>
           <div className="flex-1 bg-white mt-4 mx-4 mb-4 rounded-xl border border-gray-200 overflow-hidden">
             <HoldingsTable
               holdings={holdingsData?.holdings ?? []}

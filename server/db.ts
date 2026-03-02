@@ -291,33 +291,33 @@ function initSchema(database: DatabaseSync): void {
     // ── 증권사 (securities) ────────────────────────────────────────────────────
     upsert('키움증권', 'securities', 'utf-8',
       { date: '일자', type: '매매구분', security: '종목명', security_code: '종목코드',
-        amount: '거래금액', balance: '잔고' },
+        quantity: '수량', unit_price: '단가', amount: '거래금액', balance: '잔고' },
       'signed');
     upsert('미래에셋증권', 'securities', 'utf-8',
       { date: '거래일', type: '거래유형', security: '종목명', security_code: '종목코드',
-        description: '거래내용', amount: '거래금액', balance: '잔고금액' },
+        quantity: '수량', unit_price: '단가', description: '거래내용', amount: '거래금액', balance: '잔고금액' },
       'signed');
     // 미래에셋증권 XLS: HTML-disguised file with <th> header row.
-    // Actual column names differ from the CSV export.
+    // Actual column names: 거래일자, 거래종류, 종목명, 거래수량, 거래금액, 예수금잔고
     upsert('미래에셋증권', 'securities', 'utf-8',
       { date: '거래일자', type: '거래종류', security: '종목명',
-        amount: '거래금액', balance: '예수금잔고' },
+        quantity: '거래수량', amount: '거래금액', balance: '예수금잔고' },
       'signed', 0, 'xls');
     upsert('삼성증권', 'securities', 'utf-8',
       { date: '거래일자', type: '구분', security: '종목명', security_code: '종목코드',
-        description: '내용', amount: '거래금액', balance: '잔고' },
+        quantity: '수량', unit_price: '단가', description: '내용', amount: '거래금액', balance: '잔고' },
       'signed');
     upsert('한국투자증권', 'securities', 'utf-8',
       { date: '거래일자', type: '거래구분', security: '종목명', security_code: '종목코드',
-        description: '거래내역', amount: '금액', balance: '잔고' },
+        quantity: '수량', unit_price: '단가', description: '거래내역', amount: '금액', balance: '잔고' },
       'signed');
     upsert('NH투자증권', 'securities', 'utf-8',
       { date: '거래일자', type: '거래종류', security: '종목명', security_code: '종목코드',
-        description: '거래내용', amount: '거래금액', balance: '잔고' },
+        quantity: '수량', unit_price: '단가', description: '거래내용', amount: '거래금액', balance: '잔고' },
       'signed');
     upsert('KB증권', 'securities', 'utf-8',
       { date: '거래일자', type: '거래구분', security: '종목명', security_code: '종목코드',
-        description: '거래내용', amount: '거래금액', balance: '잔고' },
+        quantity: '수량', unit_price: '단가', description: '거래내용', amount: '거래금액', balance: '잔고' },
       'signed');
 
     database.exec('COMMIT');

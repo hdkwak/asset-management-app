@@ -276,8 +276,9 @@ router.post('/confirm', (req: Request, res: Response) => {
     } else if (account_type === 'securities') {
       const stmt = db.prepare(
         `INSERT OR IGNORE INTO securities_transactions
-           (account_id, date, type, security, security_code, description, amount, balance, import_hash)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
+           (account_id, date, type, security, security_code, description,
+            amount, balance, quantity, unit_price, import_hash)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
       );
       db.exec('BEGIN');
       try {
@@ -291,6 +292,8 @@ router.post('/confirm', (req: Request, res: Response) => {
             (row.description as string) ?? '',
             Number(row.amount),
             Number(row.balance ?? 0),
+            Number(row.quantity ?? 0),
+            Number(row.unit_price ?? 0),
             (row.import_hash as string) ?? null
           );
           saved += Number(result.changes);

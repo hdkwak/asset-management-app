@@ -54,6 +54,8 @@ export function TransactionForm({
   const [description, setDescription] = useState(st?.description ?? '');
   const [amount, setAmount] = useState(st?.amount?.toString() ?? '');
   const [balance, setBalance] = useState(st?.balance?.toString() ?? '');
+  const [quantity, setQuantity] = useState(st?.quantity ? st.quantity.toString() : '');
+  const [unitPrice, setUnitPrice] = useState(st?.unit_price ? st.unit_price.toString() : '');
 
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
@@ -95,6 +97,8 @@ export function TransactionForm({
           description,
           amount: parseFloat(amount.replace(/,/g, '')) || 0,
           balance: parseFloat(balance.replace(/,/g, '')) || 0,
+          quantity: parseFloat(quantity.replace(/,/g, '')) || 0,
+          unit_price: parseFloat(unitPrice.replace(/,/g, '')) || 0,
         };
       }
       await onSave(payload);
@@ -233,6 +237,22 @@ export function TransactionForm({
                 <input type="text" value={description} onChange={(e) => setDescription(e.target.value)}
                   placeholder="시장가 매수 100주" className={input} />
               </div>
+
+              {/* Quantity + unit_price (매수/매도 전용) */}
+              {(secType === '매수' || secType === '매도') && (
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className={label}>수량</label>
+                    <input type="text" value={quantity} onChange={(e) => setQuantity(e.target.value)}
+                      placeholder="0" className={input} />
+                  </div>
+                  <div>
+                    <label className={label}>단가 (1주당)</label>
+                    <input type="text" value={unitPrice} onChange={(e) => setUnitPrice(e.target.value)}
+                      placeholder="0" className={input} />
+                  </div>
+                </div>
+              )}
 
               {/* Amount + balance */}
               <div className="grid grid-cols-2 gap-3">

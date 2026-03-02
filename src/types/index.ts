@@ -104,6 +104,8 @@ export interface SecuritiesTransaction {
   description: string;
   amount: number;
   balance: number;
+  quantity: number;
+  unit_price: number;
   import_hash: string | null;
   created_at: string;
   updated_at: string;
@@ -135,6 +137,8 @@ export interface CreateSecuritiesTransactionPayload {
   description?: string;
   amount: number;
   balance?: number;
+  quantity?: number;
+  unit_price?: number;
 }
 
 export type CreateTransactionPayload =
@@ -276,6 +280,8 @@ export interface ParsedRow {
   security_code?: string;
   description?: string;
   balance?: number;
+  quantity?: number;
+  unit_price?: number;
 }
 
 export interface ImportPreviewResponse {

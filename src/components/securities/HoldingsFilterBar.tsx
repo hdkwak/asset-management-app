@@ -15,7 +15,7 @@ export function HoldingsFilterBar({
   onSearchChange,
 }: Props) {
   return (
-    <div className="bg-white border-b border-gray-200 px-4 py-2 flex items-center gap-3 flex-shrink-0">
+    <div className="px-4 py-2 flex items-center gap-3 flex-shrink-0 flex-1">
       {/* 보유중 / 전체 toggle */}
       <div className="flex rounded-lg border border-gray-300 overflow-hidden text-xs">
         <button

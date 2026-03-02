@@ -1,10 +1,20 @@
 import { getDb } from '../db';
 import { calcMovingAvgPrice, calcRealizedPnl } from '../utils/financeCalc';
 
-// 매수로 처리할 거래 유형
-const BUY_TYPES  = new Set(['매수']);
-// 매도로 처리할 거래 유형
-const SELL_TYPES = new Set(['매도']);
+// 매수로 처리할 거래 유형 (증권사별 명칭 포함)
+const BUY_TYPES = new Set([
+  '매수',
+  '주식매수입고', '주식매수', '매수입고',
+  '신용매수', '신용매수입고',
+  'buy', 'BUY',
+]);
+// 매도로 처리할 거래 유형 (증권사별 명칭 포함)
+const SELL_TYPES = new Set([
+  '매도',
+  '주식매도출고', '주식매도', '매도출고',
+  '신용매도', '신용매도출고',
+  'sell', 'SELL',
+]);
 
 interface TxRow {
   date: string;

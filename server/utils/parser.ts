@@ -29,6 +29,8 @@ export interface SecuritiesColumnMap {
   description?: string;
   amount: string;
   balance?: string;
+  quantity?: string;    // 수량 (거래수량, 체결수량 등)
+  unit_price?: string;  // 단가 (체결단가, 매매단가 등)
 }
 
 export interface MappedBankRow {
@@ -47,6 +49,8 @@ export interface MappedSecuritiesRow {
   description: string;
   amount: number;
   balance: number;
+  quantity: number;
+  unit_price: number;
 }
 
 // ── File parsing ─────────────────────────────────────────────────────────────
@@ -225,14 +229,22 @@ export function applySecuritiesColumnMap(
   map: SecuritiesColumnMap
 ): MappedSecuritiesRow[] {
   return rows
-    .map((row) => ({
-      date: normalizeDate(row[map.date] ?? ''),
-      type: (row[map.type ?? ''] ?? '기타').trim() || '기타',
-      security: (row[map.security ?? ''] ?? '').trim(),
-      security_code: (row[map.security_code ?? ''] ?? '').trim(),
-      description: (row[map.description ?? ''] ?? '').trim(),
-      amount: normalizeAmount(row[map.amount] ?? ''),
-      balance: normalizeAmount(row[map.balance ?? ''] ?? ''),
-    }))
+    .map((row) => {
+      const security = (row[map.security ?? ''] ?? '').trim();
+      const rawCode  = map.security_code ? (row[map.security_code] ?? '').trim() : '';
+      // security_code 컬럼이 없으면 종목명을 그룹핑 키로 사용
+      const securityCode = rawCode || security;
+      return {
+        date:          normalizeDate(row[map.date] ?? ''),
+        type:          (row[map.type ?? ''] ?? '기타').trim() || '기타',
+        security,
+        security_code: securityCode,
+        description:   (row[map.description ?? ''] ?? '').trim(),
+        amount:        normalizeAmount(row[map.amount] ?? ''),
+        balance:       normalizeAmount(row[map.balance ?? ''] ?? ''),
+        quantity:      normalizeAmount(row[map.quantity ?? ''] ?? ''),
+        unit_price:    normalizeAmount(row[map.unit_price ?? ''] ?? ''),
+      };
+    })
     .filter((r) => r.date !== '');
 }

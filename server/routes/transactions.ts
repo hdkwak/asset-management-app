@@ -1,5 +1,6 @@
 import { Router, Request, Response } from 'express';
 import { getDb } from '../db';
+import { recalculateHoldings, recalculateHoldingForSecurity } from '../services/holdingsEngine';
 
 const router = Router();
 
@@ -171,10 +172,11 @@ router.post('/', (req: Request, res: Response) => {
   } else {
     const {
       date, type = '기타', security = '', security_code = '',
-      description = '', amount, balance = 0,
+      description = '', amount, balance = 0, quantity = 0, unit_price = 0,
     } = fields as {
       date: string; type?: string; security?: string; security_code?: string;
       description?: string; amount: number; balance?: number;
+      quantity?: number; unit_price?: number;
     };
     if (!date || amount === undefined) {
       res.status(400).json({ error: '날짜와 금액은 필수입니다.' }); return;
@@ -182,10 +184,11 @@ router.post('/', (req: Request, res: Response) => {
     const result = db
       .prepare(
         `INSERT INTO securities_transactions
-           (account_id, date, type, security, security_code, description, amount, balance)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
+           (account_id, date, type, security, security_code, description, amount, balance, quantity, unit_price)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
       )
-      .run(id, date, type, security, security_code, description, Number(amount), Number(balance));
+      .run(id, date, type, security, security_code, description, Number(amount), Number(balance), Number(quantity), Number(unit_price));
+    recalculateHoldingForSecurity(id, security_code);
     res.status(201).json(
       db.prepare('SELECT * FROM securities_transactions WHERE id = ?').get(Number(result.lastInsertRowid))
     );
@@ -231,17 +234,19 @@ router.put('/:id', (req: Request, res: Response) => {
   } else {
     const {
       date, type = '기타', security = '', security_code = '',
-      description = '', amount, balance = 0,
+      description = '', amount, balance = 0, quantity = 0, unit_price = 0,
     } = fields as {
       date: string; type?: string; security?: string; security_code?: string;
       description?: string; amount: number; balance?: number;
+      quantity?: number; unit_price?: number;
     };
     db.prepare(
       `UPDATE securities_transactions
          SET date=?, type=?, security=?, security_code=?, description=?, amount=?, balance=?,
-             updated_at=datetime('now')
+             quantity=?, unit_price=?, updated_at=datetime('now')
        WHERE id=?`
-    ).run(date, type, security, security_code, description, Number(amount), Number(balance), txId);
+    ).run(date, type, security, security_code, description, Number(amount), Number(balance), Number(quantity), Number(unit_price), txId);
+    recalculateHoldingForSecurity(aId, security_code);
     res.json(db.prepare('SELECT * FROM securities_transactions WHERE id=?').get(txId));
   }
 });
@@ -269,7 +274,16 @@ router.delete('/bulk', (req: Request, res: Response) => {
       recalculateBankBalance(aId);
     }
   } else {
+    // Collect affected account IDs before deleting (for holdings recalc)
+    const affected = (db.prepare(
+      `SELECT DISTINCT account_id FROM ${table} WHERE id IN (${placeholders})`
+    ) as unknown as { all: (...p: number[]) => { account_id: number }[] }).all(...ids);
+
     db.prepare(`DELETE FROM ${table} WHERE id IN (${placeholders})`).run(...ids);
+
+    for (const { account_id: aId } of affected) {
+      recalculateHoldings(aId);
+    }
   }
 
   // Legacy: single account_id path
@@ -287,9 +301,21 @@ router.delete('/:id', (req: Request, res: Response) => {
   const { account_type, account_id } = req.body as {
     account_type: string; account_id: number;
   };
+  const aId = Number(account_id);
   const table = account_type === 'bank' ? 'bank_transactions' : 'securities_transactions';
-  db.prepare(`DELETE FROM ${table} WHERE id = ?`).run(txId);
-  if (account_type === 'bank') recalculateBankBalance(Number(account_id));
+
+  if (account_type === 'securities') {
+    // 삭제 전 security_code 조회 (특정 종목만 재계산)
+    const tx = db.prepare(`SELECT security_code FROM ${table} WHERE id = ?`).get(txId) as
+      | { security_code: string }
+      | undefined;
+    db.prepare(`DELETE FROM ${table} WHERE id = ?`).run(txId);
+    recalculateHoldingForSecurity(aId, tx?.security_code ?? '');
+  } else {
+    db.prepare(`DELETE FROM ${table} WHERE id = ?`).run(txId);
+    recalculateBankBalance(aId);
+  }
+
   res.status(204).end();
 });
 

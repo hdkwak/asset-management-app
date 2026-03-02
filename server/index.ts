@@ -10,6 +10,8 @@ import categoriesRouter from './routes/categories';
 import analyticsRouter from './routes/analytics';
 import backupRouter from './routes/backup';
 import settingsRouter from './routes/settings';
+import holdingsRouter from './routes/holdings';
+import { recalculateHoldings } from './services/holdingsEngine';
 
 const app = express();
 const PORT = 3001;
@@ -20,6 +22,21 @@ app.use(express.json({ limit: '50mb' }));
 // Initialize DB on startup
 getDb();
 
+// 기존 증권 계좌 holdings 초기 계산
+try {
+  const securitiesAccounts = getDb()
+    .prepare("SELECT id FROM accounts WHERE type = 'securities'")
+    .all() as { id: number }[];
+  for (const { id } of securitiesAccounts) {
+    recalculateHoldings(id);
+  }
+  if (securitiesAccounts.length > 0) {
+    console.log(`[DB Init] ${securitiesAccounts.length}개 증권 계좌 holdings 초기화 완료`);
+  }
+} catch (e) {
+  console.error('[DB Init] holdings 초기화 실패:', e);
+}
+
 app.use('/api/accounts', accountsRouter);
 app.use('/api/transactions', transactionsRouter);
 app.use('/api/import', importRouter);
@@ -29,6 +46,7 @@ app.use('/api/categories', categoriesRouter);
 app.use('/api/analytics', analyticsRouter);
 app.use('/api/backup', backupRouter);
 app.use('/api/settings', settingsRouter);
+app.use('/api/holdings', holdingsRouter);
 
 app.listen(PORT, () => {
   console.log(`🚀 API 서버가 포트 ${PORT}에서 실행 중입니다`);

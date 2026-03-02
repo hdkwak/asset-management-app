@@ -13,6 +13,7 @@ import { parsePdfAdvanced } from '../utils/pdfParser';
 import { detectAndDecode } from '../utils/encoding';
 import { computeImportHash } from '../utils/hash';
 import { recalculateBankBalance } from './transactions';
+import { recalculateHoldings } from '../services/holdingsEngine';
 
 const router = Router();
 const upload = multer({
@@ -98,13 +99,26 @@ router.post('/preview', upload.single('file'), async (req: Request, res: Respons
     const effectiveSheet     = profile?.sheet_index ?? sheetIndex;
     const effectiveHeaderRow = profile?.header_row ?? headerRow;
 
+    // Extract column_map values so the XLS parser can locate the header row by
+    // matching against known column label strings (e.g. "거래일자", "거래금액").
+    let knownHeaderValues: string[] | undefined;
+    const cmSource = profile?.column_map ?? columnMappingStr;
+    if (cmSource) {
+      try {
+        const cm = JSON.parse(cmSource) as Record<string, unknown>;
+        knownHeaderValues = Object.values(cm).filter(
+          (v): v is string => typeof v === 'string' && v.length > 0
+        );
+      } catch { /* ignore */ }
+    }
+
     // Parse file into raw rows
     let headers: string[];
     let rows: Record<string, string>[];
     let detectedEncoding = effectiveEncoding;
 
     if (ext === 'xls' || ext === 'xlsx') {
-      const result = parseExcelSheet(file.buffer, effectiveSheet, effectiveHeaderRow);
+      const result = parseExcelSheet(file.buffer, effectiveSheet, effectiveHeaderRow, knownHeaderValues);
       headers = result.headers;
       rows = result.rows;
       detectedEncoding = 'Excel (내장 인코딩)';
@@ -259,7 +273,7 @@ router.post('/confirm', (req: Request, res: Response) => {
         throw e;
       }
       recalculateBankBalance(Number(account_id));
-    } else {
+    } else if (account_type === 'securities') {
       const stmt = db.prepare(
         `INSERT OR IGNORE INTO securities_transactions
            (account_id, date, type, security, security_code, description, amount, balance, import_hash)
@@ -286,6 +300,8 @@ router.post('/confirm', (req: Request, res: Response) => {
         db.exec('ROLLBACK');
         throw e;
       }
+      // 증권 대량 import 후 holdings 재계산
+      if (saved > 0) recalculateHoldings(Number(account_id));
     }
 
     // Record import history

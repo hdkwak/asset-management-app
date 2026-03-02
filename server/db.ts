@@ -103,6 +103,31 @@ function initSchema(database: DatabaseSync): void {
       value      TEXT NOT NULL,
       updated_at TEXT DEFAULT (datetime('now'))
     );
+
+    CREATE TABLE IF NOT EXISTS holdings (
+      id                INTEGER PRIMARY KEY AUTOINCREMENT,
+      account_id        INTEGER NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+      security_code     TEXT NOT NULL,
+      security_name     TEXT NOT NULL DEFAULT '',
+      quantity          REAL NOT NULL DEFAULT 0,
+      avg_buy_price     REAL NOT NULL DEFAULT 0,
+      total_buy_amount  REAL NOT NULL DEFAULT 0,
+      realized_pnl      REAL NOT NULL DEFAULT 0,
+      last_updated      TEXT DEFAULT (datetime('now')),
+      UNIQUE(account_id, security_code)
+    );
+
+    CREATE TABLE IF NOT EXISTS price_cache (
+      security_code TEXT PRIMARY KEY,
+      security_name TEXT NOT NULL DEFAULT '',
+      current_price REAL NOT NULL DEFAULT 0,
+      prev_close    REAL NOT NULL DEFAULT 0,
+      change_amount REAL NOT NULL DEFAULT 0,
+      change_rate   REAL NOT NULL DEFAULT 0,
+      market        TEXT DEFAULT 'KOSPI',
+      fetched_at    TEXT DEFAULT (datetime('now')),
+      is_stale      INTEGER DEFAULT 1
+    );
   `);
 
   // ── Migration: add balance column to bank_transactions if missing ──────────
@@ -112,6 +137,21 @@ function initSchema(database: DatabaseSync): void {
   if (!cols.some((c) => c.name === 'balance')) {
     database.exec('ALTER TABLE bank_transactions ADD COLUMN balance REAL DEFAULT 0');
     console.log('[DB Migration] bank_transactions: balance 컬럼 추가 완료');
+  }
+
+  // ── Migration: add quantity/unit_price to securities_transactions ──────────
+  const secCols = database
+    .prepare('PRAGMA table_info(securities_transactions)')
+    .all() as { name: string }[];
+  const secMigrations: Record<string, string> = {
+    quantity:   'ALTER TABLE securities_transactions ADD COLUMN quantity REAL DEFAULT 0',
+    unit_price: 'ALTER TABLE securities_transactions ADD COLUMN unit_price REAL DEFAULT 0',
+  };
+  for (const [col, sql] of Object.entries(secMigrations)) {
+    if (!secCols.some((c) => c.name === col)) {
+      database.exec(sql);
+      console.log(`[DB Migration] securities_transactions: ${col} 컬럼 추가`);
+    }
   }
 
   // ── Migration: add icon column to categories if missing ───────────────────
@@ -257,6 +297,12 @@ function initSchema(database: DatabaseSync): void {
       { date: '거래일', type: '거래유형', security: '종목명', security_code: '종목코드',
         description: '거래내용', amount: '거래금액', balance: '잔고금액' },
       'signed');
+    // 미래에셋증권 XLS: HTML-disguised file with <th> header row.
+    // Actual column names differ from the CSV export.
+    upsert('미래에셋증권', 'securities', 'utf-8',
+      { date: '거래일자', type: '거래종류', security: '종목명',
+        amount: '거래금액', balance: '예수금잔고' },
+      'signed', 0, 'xls');
     upsert('삼성증권', 'securities', 'utf-8',
       { date: '거래일자', type: '구분', security: '종목명', security_code: '종목코드',
         description: '내용', amount: '거래금액', balance: '잔고' },

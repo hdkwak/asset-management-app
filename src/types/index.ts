@@ -293,3 +293,56 @@ export interface ImportConfirmResponse {
   saved: number;
   duplicates: number;
 }
+
+// ── Holdings (Phase 3) ────────────────────────────────────────────────────────
+
+export interface Holding {
+  id: number;
+  account_id: number;
+  account_name?: string;
+  security_code: string;
+  security_name: string;
+  quantity: number;
+  avg_buy_price: number;
+  total_buy_amount: number;
+  realized_pnl: number;
+  // price_cache (현재가, 없으면 0)
+  current_price: number;
+  prev_close: number;
+  change_amount: number;
+  change_rate: number;
+  market: string;
+  price_fetched_at: string | null;
+  // 계산 필드
+  eval_amount: number;
+  unrealized_pnl: number;
+  unrealized_pnl_rate: number;
+  total_pnl: number;
+}
+
+export interface HoldingsSummary {
+  total_buy_amount: number;
+  total_eval_amount: number;
+  total_unrealized_pnl: number;
+  total_unrealized_pnl_rate: number;
+  total_realized_pnl: number;
+  total_pnl: number;
+  last_price_update: string | null;
+}
+
+export interface HoldingsResponse {
+  holdings: Holding[];
+  summary: HoldingsSummary;
+}
+
+export interface PriceCache {
+  security_code: string;
+  security_name: string;
+  current_price: number;
+  prev_close: number;
+  change_amount: number;
+  change_rate: number;
+  market: string;
+  fetched_at: string;
+  is_stale: number;
+}

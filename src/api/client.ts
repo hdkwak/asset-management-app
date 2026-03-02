@@ -17,6 +17,7 @@ import type {
   BackupData,
   RestoreStats,
   AppSettings,
+  HoldingsResponse,
 } from '../types';
 
 const BASE = '/api';
@@ -221,4 +222,14 @@ export const updateAppSetting = (key: string, value: string) =>
   request<{ key: string; value: string }>(`/settings/${key}`, {
     method: 'PUT',
     body: JSON.stringify({ value }),
+  });
+
+// ── Holdings (Phase 3) ────────────────────────────────────────────────────────
+
+export const getHoldings = (accountId: number | 'all') =>
+  request<HoldingsResponse>(`/holdings?account_id=${accountId}`);
+
+export const recalculateHoldings = (accountId: number) =>
+  request<{ success: boolean; account_id: number }>(`/holdings/recalculate?account_id=${accountId}`, {
+    method: 'POST',
   });

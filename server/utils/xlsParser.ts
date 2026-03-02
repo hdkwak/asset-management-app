@@ -27,14 +27,14 @@ function stripHtml(html: string): string {
     .trim();
 }
 
-/** Extract all <tr> rows (with <td> cells) from an HTML string. */
+/** Extract all <tr> rows (with <td> or <th> cells) from an HTML string. */
 function parseHtmlTableRows(html: string): string[][] {
   const allRows: string[][] = [];
   const trRegex = /<tr[^>]*>([\s\S]*?)<\/tr>/gi;
   let trMatch: RegExpExecArray | null;
   while ((trMatch = trRegex.exec(html)) !== null) {
     const cells: string[] = [];
-    const tdRegex = /<td[^>]*>([\s\S]*?)<\/td>/gi;
+    const tdRegex = /<(?:td|th)[^>]*>([\s\S]*?)<\/(?:td|th)>/gi;
     let tdMatch: RegExpExecArray | null;
     while ((tdMatch = tdRegex.exec(trMatch[1])) !== null) {
       cells.push(stripHtml(tdMatch[1]));
@@ -102,14 +102,42 @@ export function detectHeaderRow(rows: (string | undefined)[][]): number {
 }
 
 /**
+ * For HTML-disguised XLS files, find the header row by matching column_map values.
+ * If knownHeaders is provided, scans the first 20 rows for the one with the most
+ * exact cell matches. Falls back to the first row with the maximum cell count.
+ */
+function findHtmlHeaderRow(rows: (string | undefined)[][], knownHeaders?: string[]): number {
+  if (knownHeaders && knownHeaders.length > 0) {
+    const windowSize = Math.min(20, rows.length);
+    let bestIdx = -1;
+    let bestCount = 0;
+    for (let i = 0; i < windowSize; i++) {
+      const cells = rows[i].map((c) => (c ?? '').toString().trim().toLowerCase());
+      const matchCount = knownHeaders.filter((h) => cells.includes(h.toLowerCase())).length;
+      if (matchCount > bestCount) {
+        bestCount = matchCount;
+        bestIdx = i;
+      }
+    }
+    if (bestIdx >= 0 && bestCount >= 1) return bestIdx;
+  }
+  // Fallback: first row with the maximum cell count
+  const maxCells = Math.max(...rows.map((r) => r.length));
+  const idx = rows.findIndex((r) => r.length === maxCells);
+  return idx >= 0 ? idx : 0;
+}
+
+/**
  * Parse a specific sheet from an XLS/XLSX buffer.
  * If headerRow is -1 (auto), detectHeaderRow() is used.
  * HTML-disguised XLS files are handled via a built-in HTML table parser.
+ * Pass knownHeaders (column_map values) for more accurate header row detection.
  */
 export function parseExcelSheet(
   buffer: Buffer,
   sheetIndex = 0,
-  headerRow = -1
+  headerRow = -1,
+  knownHeaders?: string[]
 ): ParseResult {
   let allRows: (string | undefined)[][];
   let effectiveHeaderRow = headerRow;
@@ -117,12 +145,10 @@ export function parseExcelSheet(
   if (isHtmlBuffer(buffer)) {
     allRows = parseHtmlTableRows(buffer.toString('utf-8')) as string[][];
     // HTML XLS files often have multi-row preambles (account info, etc.).
-    // Find the header as the first row with the maximum cell count, which
-    // corresponds to the actual transaction table columns.
+    // Use column_map values (knownHeaders) to pinpoint the header row when available.
+    // Falls back to the first row with the maximum cell count.
     if (effectiveHeaderRow < 0 && allRows.length > 0) {
-      const maxCells = Math.max(...allRows.map((r) => r.length));
-      const idx = allRows.findIndex((r) => r.length === maxCells);
-      effectiveHeaderRow = idx >= 0 ? idx : 0;
+      effectiveHeaderRow = findHtmlHeaderRow(allRows, knownHeaders);
     }
   } else {
     const wb = XLSX.read(buffer, { type: 'buffer', raw: false });

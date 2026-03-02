@@ -11,7 +11,10 @@ import analyticsRouter from './routes/analytics';
 import backupRouter from './routes/backup';
 import settingsRouter from './routes/settings';
 import holdingsRouter from './routes/holdings';
+import pricesRouter from './routes/prices';
+import stocksRouter from './routes/stocks';
 import { recalculateHoldings } from './services/holdingsEngine';
+import { startScheduler } from './services/priceScheduler';
 
 const app = express();
 const PORT = 3001;
@@ -47,6 +50,11 @@ app.use('/api/analytics', analyticsRouter);
 app.use('/api/backup', backupRouter);
 app.use('/api/settings', settingsRouter);
 app.use('/api/holdings', holdingsRouter);
+app.use('/api/prices', pricesRouter);
+app.use('/api/stocks', stocksRouter);
+
+// Start price auto-refresh scheduler
+startScheduler();
 
 app.listen(PORT, () => {
   console.log(`🚀 API 서버가 포트 ${PORT}에서 실행 중입니다`);

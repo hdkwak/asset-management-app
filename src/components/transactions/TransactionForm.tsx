@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { X } from 'lucide-react';
+import { StockSearchInput } from './StockSearchInput';
 import type {
   AnyTransaction,
   BankTransaction,
@@ -211,8 +212,13 @@ export function TransactionForm({
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className={label}>종목명</label>
-                  <input type="text" value={security} onChange={(e) => setSecurity(e.target.value)}
-                    placeholder="삼성전자" className={input} />
+                  <StockSearchInput
+                    value={security}
+                    onChange={(name, code) => {
+                      setSecurity(name);
+                      if (code) setSecurityCode(code);
+                    }}
+                  />
                 </div>
                 <div>
                   <label className={label}>종목코드</label>

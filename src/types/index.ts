@@ -346,3 +346,17 @@ export interface PriceCache {
   fetched_at: string;
   is_stale: number;
 }
+
+export interface StockSearchResult {
+  code: string;
+  name: string;
+  market: string;
+}
+
+export interface PriceStatus {
+  total_cached: number;
+  stale_count: number;
+  last_refresh: string | null;
+  next_scheduled: string | null;
+  market_open: boolean;
+}

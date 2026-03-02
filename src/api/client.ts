@@ -18,6 +18,9 @@ import type {
   RestoreStats,
   AppSettings,
   HoldingsResponse,
+  PriceCache,
+  PriceStatus,
+  StockSearchResult,
 } from '../types';
 
 const BASE = '/api';
@@ -233,3 +236,21 @@ export const recalculateHoldings = (accountId: number) =>
   request<{ success: boolean; account_id: number }>(`/holdings/recalculate?account_id=${accountId}`, {
     method: 'POST',
   });
+
+// ── Prices ────────────────────────────────────────────────────────────────────
+
+export const getPrices = (codes: string[]) =>
+  request<PriceCache[]>(codes.length > 0 ? `/prices?codes=${codes.join(',')}` : '/prices');
+
+export const refreshAllPrices = () =>
+  request<{ refreshed: number; total: number }>('/prices/refresh', { method: 'POST' });
+
+export const refreshStockPrice = (code: string) =>
+  request<{ refreshed: number }>(`/prices/refresh/${encodeURIComponent(code)}`, { method: 'POST' });
+
+export const getPriceStatus = () => request<PriceStatus>('/prices/status');
+
+// ── Stocks ────────────────────────────────────────────────────────────────────
+
+export const searchStocks = (q: string) =>
+  request<StockSearchResult[]>(`/stocks/search?q=${encodeURIComponent(q)}`);

@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { getHoldings, refreshAllPrices, refreshStockPrice } from '../api/client';
+import { getHoldings, refreshAllPrices, refreshStockPrice, setHoldingTicker } from '../api/client';
 import type { HoldingsResponse } from '../types';
 
 interface UseHoldingsParams {
@@ -48,8 +48,14 @@ export function useHoldings({
     }
   };
 
-  const refreshOne = async (code: string) => {
-    await refreshStockPrice(code);
+  const refreshOne = async (tickerOrCode: string) => {
+    await refreshStockPrice(tickerOrCode);
+    await fetchHoldings();
+  };
+
+  const setTicker = async (securityCode: string, tickerCode: string) => {
+    if (!accountId || accountId === 'all') return;
+    await setHoldingTicker(Number(accountId), securityCode, tickerCode);
     await fetchHoldings();
   };
 
@@ -60,5 +66,6 @@ export function useHoldings({
     refetch: fetchHoldings,
     refreshAll,
     refreshOne,
+    setTicker,
   };
 }

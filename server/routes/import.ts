@@ -96,7 +96,9 @@ router.post('/preview', upload.single('file'), async (req: Request, res: Respons
 
     const effectiveEncoding  = profile?.encoding ?? encoding;
     const effectiveSkipRows  = profile?.skip_rows ?? skipRows;
-    const effectiveSheet     = profile?.sheet_index ?? sheetIndex;
+    // User-provided sheetIndex always wins — profile.sheet_index is 0 by default
+    // which would incorrectly override the user's explicit sheet selection via ??
+    const effectiveSheet     = sheetIndex;
     const effectiveHeaderRow = profile?.header_row ?? headerRow;
 
     // Extract column_map values so the XLS parser can locate the header row by

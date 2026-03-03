@@ -310,6 +310,7 @@ export interface Holding {
   account_name?: string;
   security_code: string;
   security_name: string;
+  ticker_code?: string;
   quantity: number;
   avg_buy_price: number;
   total_buy_amount: number;

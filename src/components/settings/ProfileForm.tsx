@@ -15,11 +15,12 @@ const AMOUNT_SIGNS = [
 
 // Standard column keys by account type
 const BANK_MAP_KEYS = ['date', 'payee', 'amount', 'amount_in', 'amount_out', 'balance', 'note'];
-const SEC_MAP_KEYS  = ['date', 'type', 'security', 'security_code', 'description', 'amount', 'balance'];
+const SEC_MAP_KEYS  = ['date', 'type', 'security', 'security_code', 'quantity', 'unit_price', 'description', 'amount', 'balance'];
 const COL_LABELS: Record<string, string> = {
   date: '날짜', payee: '거래처', amount: '금액(±)', amount_in: '입금 금액',
   amount_out: '출금 금액', balance: '잔고', note: '메모',
-  type: '거래 유형', security: '종목명', security_code: '종목코드', description: '거래 내용',
+  type: '거래 유형', security: '종목명', security_code: '종목코드',
+  quantity: '수량', unit_price: '단가', description: '거래 내용',
 };
 
 interface Props {

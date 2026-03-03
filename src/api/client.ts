@@ -247,6 +247,12 @@ export const recalculateHoldings = (accountId: number) =>
     method: 'POST',
   });
 
+export const setHoldingTicker = (accountId: number, securityCode: string, tickerCode: string) =>
+  request<{ success: boolean }>(
+    `/holdings/${accountId}/${encodeURIComponent(securityCode)}/ticker`,
+    { method: 'PUT', body: JSON.stringify({ ticker_code: tickerCode }) }
+  );
+
 // ── Prices ────────────────────────────────────────────────────────────────────
 
 export const getPrices = (codes: string[]) =>

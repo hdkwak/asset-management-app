@@ -222,6 +222,34 @@ export function TransactionTable({
       },
     },
     {
+      id: 'quantity',
+      accessorKey: 'quantity',
+      header: () => <span className="text-xs font-semibold text-gray-500 uppercase tracking-wider">수량</span>,
+      meta: { align: 'right' },
+      cell: ({ getValue }) => {
+        const v = getValue() as number;
+        return (
+          <span className="tabular-nums text-xs text-gray-700">
+            {v ? v.toLocaleString('ko-KR') : '-'}
+          </span>
+        );
+      },
+    },
+    {
+      id: 'unit_price',
+      accessorKey: 'unit_price',
+      header: () => <span className="text-xs font-semibold text-gray-500 uppercase tracking-wider">단가</span>,
+      meta: { align: 'right' },
+      cell: ({ getValue }) => {
+        const v = getValue() as number;
+        return (
+          <span className="tabular-nums text-xs text-gray-700">
+            {v ? v.toLocaleString('ko-KR') : '-'}
+          </span>
+        );
+      },
+    },
+    {
       id: 'description',
       accessorKey: 'description',
       header: () => <span className="text-xs font-semibold text-gray-500 uppercase tracking-wider">내용</span>,

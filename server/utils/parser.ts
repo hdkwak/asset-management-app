@@ -175,9 +175,31 @@ export function normalizeDate(s: string): string {
 
   const segs = datePart.split(/[-/.]/);
   if (segs.length === 3) {
-    let [y, m, d] = segs;
-    if (y.length === 2) y = `20${y}`;
-    return `${y}-${m.padStart(2, '0')}-${d.padStart(2, '0')}`;
+    const [a, b, c] = segs;
+    const aNum = parseInt(a), bNum = parseInt(b), cNum = parseInt(c);
+
+    // 4-digit year first → unambiguous Y/M/D
+    if (a.length === 4) {
+      return `${a}-${b.padStart(2, '0')}-${c.padStart(2, '0')}`;
+    }
+
+    // If c is a 2-digit number ≥ 10 it likely represents a year (e.g. 25 → 2025).
+    // Korean financial files (e.g. 미래에셋 XLS) use M/D/YY or D/M/YY format.
+    if (c.length === 2 && cNum >= 10) {
+      const y = `20${c}`;
+      if (aNum >= 1 && aNum <= 12 && bNum >= 1 && bNum <= 31) {
+        // M/D/YY  e.g. 12/5/25 → 2025-12-05,  10/30/25 → 2025-10-30
+        return `${y}-${a.padStart(2, '0')}-${b.padStart(2, '0')}`;
+      }
+      if (bNum >= 1 && bNum <= 12 && aNum >= 1 && aNum <= 31) {
+        // D/M/YY  e.g. 25/12/05 (already handled above by 4-digit check, but just in case)
+        return `${y}-${b.padStart(2, '0')}-${a.padStart(2, '0')}`;
+      }
+    }
+
+    // Standard YY/MM/DD or Y/M/D with 2-digit year prefix
+    const y = a.length === 2 ? `20${a}` : a;
+    return `${y}-${b.padStart(2, '0')}-${c.padStart(2, '0')}`;
   }
 
   return datePart;

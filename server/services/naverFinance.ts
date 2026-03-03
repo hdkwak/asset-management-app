@@ -54,26 +54,45 @@ async function fetchByPollingApi(code: string): Promise<StockPrice | null> {
 
     if (!item) return null;
 
-    // nv = 현재가, sv = 전일종가, cv = 등락액, cr = 등락률
-    // rf = 등락방향: '2'=상승, '5'=하락, '3'=보합
-    const currentPrice = Number(item.nv ?? item.cv ?? 0);
-    if (!currentPrice) return null;
+    // New API format (2025+): closePriceRaw, compareToPreviousClosePriceRaw, fluctuationsRatioRaw
+    // Old API format: nv=현재가, sv=전일종가, cv=등락액, cr=등락률, rf=등락방향(2=상승,5=하락)
+    const isNewFormat = 'closePriceRaw' in item || 'closePrice' in item;
 
-    const prevClose = Number(item.sv ?? item.ov ?? 0) || currentPrice;
-    const changeAmt = Number(item.cv ?? item.cr ?? 0);
-    const changeRate = Number(item.cr ?? item.rt ?? 0);
-    const name = String(item.nm ?? item.name ?? code);
-    const rf = String(item.rf ?? '3');
+    let currentPrice: number;
+    let changeAmt: number;
+    let changeRate: number;
+    let prevClose: number;
+    let name: string;
 
-    const sign = rf === '5' ? -1 : rf === '2' ? 1 : 0;
+    if (isNewFormat) {
+      // New format — values are already signed; raw fields are numeric strings
+      currentPrice = Number(item.closePriceRaw ?? String(item.closePrice ?? '').replace(/[^0-9]/g, '')) || 0;
+      if (!currentPrice) return null;
+      changeAmt  = Number(item.compareToPreviousClosePriceRaw ?? 0);
+      changeRate = Number(item.fluctuationsRatioRaw ?? 0);
+      prevClose  = currentPrice - changeAmt;
+      name = String(item.stockName ?? item.nm ?? item.name ?? code);
+    } else {
+      // Old format — apply sign separately
+      currentPrice = Number(item.nv ?? 0);
+      if (!currentPrice) return null;
+      prevClose  = Number(item.sv ?? item.ov ?? 0) || currentPrice;
+      changeAmt  = Number(item.cv ?? 0);
+      changeRate = Number(item.cr ?? item.rt ?? 0);
+      name = String(item.nm ?? item.name ?? code);
+      const rf = String(item.rf ?? '3');
+      const sign = rf === '5' ? -1 : rf === '2' ? 1 : 0;
+      changeAmt  = sign * Math.abs(changeAmt);
+      changeRate = sign * Math.abs(changeRate);
+    }
 
     return {
       security_code: code,
       security_name: name,
       current_price: currentPrice,
-      prev_close: prevClose,
-      change_amount: sign * Math.abs(changeAmt),
-      change_rate: sign * Math.abs(changeRate),
+      prev_close: prevClose || currentPrice,
+      change_amount: changeAmt,
+      change_rate: changeRate,
       market: 'UNKNOWN',
       fetched_at: new Date().toISOString(),
     };

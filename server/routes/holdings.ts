@@ -27,7 +27,7 @@ router.get('/', (req: Request, res: Response) => {
            pc.fetched_at                  AS price_fetched_at
     FROM holdings h
     JOIN accounts a ON a.id = h.account_id
-    LEFT JOIN price_cache pc ON pc.security_code = h.security_code
+    LEFT JOIN price_cache pc ON pc.security_code = COALESCE(NULLIF(h.ticker_code,''), h.security_code)
   `;
 
   if (!accountIdParam || accountIdParam === 'all') {
@@ -111,6 +111,60 @@ router.get('/', (req: Request, res: Response) => {
       last_price_update:         lastPriceUpdate,
     },
   });
+});
+
+// ── PUT /api/holdings/:account_id/:security_code/ticker ──────────────────────
+// Sets the Naver-compatible ticker code. If another holding in the same account
+// already has the same ticker_code, the two are automatically merged:
+// all transactions from the duplicate are re-keyed to this security_code.
+router.put('/:account_id/:security_code/ticker', (req: Request, res: Response) => {
+  const accountId = Number(req.params.account_id);
+  const securityCode = req.params.security_code;
+  const tickerCode = ((req.body as { ticker_code: string }).ticker_code ?? '').trim();
+  if (!accountId || !securityCode) {
+    res.status(400).json({ error: '필수 항목 누락' });
+    return;
+  }
+  const db = getDb();
+  db.exec('BEGIN');
+  try {
+    // 1. Save ticker_code
+    db.prepare(
+      'UPDATE holdings SET ticker_code = ? WHERE account_id = ? AND security_code = ?'
+    ).run(tickerCode, accountId, securityCode);
+
+    // 2. Auto-merge: find any other holding with the same ticker_code
+    let merged = false;
+    if (tickerCode) {
+      const duplicates = db.prepare(
+        `SELECT security_code FROM holdings
+         WHERE account_id = ? AND ticker_code = ? AND security_code != ?`
+      ).all(accountId, tickerCode, securityCode) as { security_code: string }[];
+
+      for (const dup of duplicates) {
+        // Migrate all transactions from duplicate security_code to this one
+        db.prepare(
+          `UPDATE securities_transactions SET security_code = ?
+           WHERE account_id = ? AND security_code = ?`
+        ).run(securityCode, accountId, dup.security_code);
+        // Remove the now-empty duplicate holding
+        db.prepare(
+          'DELETE FROM holdings WHERE account_id = ? AND security_code = ?'
+        ).run(accountId, dup.security_code);
+        merged = true;
+      }
+    }
+
+    db.exec('COMMIT');
+
+    // 3. If we merged, recalculate holdings from scratch
+    if (merged) recalculateHoldings(accountId);
+
+    res.json({ success: true, merged });
+  } catch (e) {
+    db.exec('ROLLBACK');
+    throw e;
+  }
 });
 
 // ── POST /api/holdings/recalculate?account_id=<id> ───────────────────────────

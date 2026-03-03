@@ -82,15 +82,16 @@ export function isMarketOpen(): boolean {
   return kstTime >= 900 && kstTime < 1530;
 }
 
-/** Returns security codes of all holdings with quantity > 0. */
+/** Returns ticker codes (or security_code fallback) of all holdings with quantity > 0. */
 export function getActiveHoldingCodes(): string[] {
   const rows = getDb()
     .prepare(
-      `SELECT DISTINCT security_code FROM holdings
+      `SELECT DISTINCT COALESCE(NULLIF(ticker_code,''), security_code) AS code
+       FROM holdings
        WHERE quantity > 0 AND security_code IS NOT NULL AND security_code != ''`
     )
-    .all() as { security_code: string }[];
-  return rows.map((r) => r.security_code);
+    .all() as { code: string }[];
+  return rows.map((r) => r.code);
 }
 
 export function getCacheStatus(): {

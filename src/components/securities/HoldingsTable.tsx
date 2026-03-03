@@ -1,11 +1,11 @@
-import React from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import {
   useReactTable,
   getCoreRowModel,
   flexRender,
   type ColumnDef,
 } from '@tanstack/react-table';
-import { ChevronUp, ChevronDown, ChevronsUpDown, TrendingUp, RefreshCw, ArrowRight } from 'lucide-react';
+import { ChevronUp, ChevronDown, ChevronsUpDown, TrendingUp, RefreshCw, ArrowRight, AlertCircle, Check, X } from 'lucide-react';
 import type { Holding } from '../../types';
 
 // ── Korean convention: up=red, down=blue ──────────────────────────────────────
@@ -38,6 +38,118 @@ function fmtTime(iso: string | null): string {
   } catch {
     return '-';
   }
+}
+
+// ── TickerCell ────────────────────────────────────────────────────────────────
+// Inline ticker code input: user directly types the 6-digit Naver ticker code.
+
+interface TickerCellProps {
+  holding: Holding;
+  onSetTicker: (securityCode: string, tickerCode: string) => Promise<void>;
+}
+
+function TickerCell({ holding, onSetTicker }: TickerCellProps) {
+  const ticker = holding.ticker_code?.trim() ?? '';
+  const hasValidTicker = /^\d{6}$/.test(ticker);
+  const [editing, setEditing] = useState(false);
+  const [input, setInput] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState('');
+  const inputRef = useRef<HTMLInputElement>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  // Close on outside click
+  useEffect(() => {
+    if (!editing) return;
+    const handler = (e: MouseEvent) => {
+      if (!containerRef.current?.contains(e.target as Node)) setEditing(false);
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [editing]);
+
+  const handleOpen = () => {
+    setInput(ticker);
+    setError('');
+    setEditing(true);
+    setTimeout(() => inputRef.current?.focus(), 0);
+  };
+
+  const handleSave = async () => {
+    const code = input.trim();
+    if (!/^\d{6}$/.test(code)) {
+      setError('6자리 숫자 코드를 입력하세요');
+      return;
+    }
+    setSaving(true);
+    setError('');
+    try {
+      await onSetTicker(holding.security_code, code);
+      setEditing(false);
+    } catch {
+      setError('저장 실패');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter') void handleSave();
+    if (e.key === 'Escape') setEditing(false);
+  };
+
+  if (!editing) {
+    return hasValidTicker ? (
+      <button
+        onClick={handleOpen}
+        title="티커 코드 변경"
+        className="text-xs text-gray-400 hover:text-blue-500 transition-colors font-mono"
+      >
+        {ticker}
+      </button>
+    ) : (
+      <button
+        onClick={handleOpen}
+        title="시세 조회용 6자리 종목코드 입력"
+        className="flex items-center gap-0.5 text-xs text-orange-500 hover:text-orange-700"
+      >
+        <AlertCircle size={11} />
+        <span>코드 입력</span>
+      </button>
+    );
+  }
+
+  return (
+    <div ref={containerRef} className="relative">
+      <div className="flex items-center gap-1">
+        <input
+          ref={inputRef}
+          value={input}
+          onChange={(e) => setInput(e.target.value.replace(/\D/g, '').slice(0, 6))}
+          onKeyDown={handleKeyDown}
+          placeholder="000000"
+          maxLength={6}
+          className="w-20 text-xs border border-blue-400 rounded px-1.5 py-0.5 font-mono focus:outline-none focus:ring-1 focus:ring-blue-500"
+        />
+        <button
+          onClick={() => void handleSave()}
+          disabled={saving}
+          className="p-0.5 text-blue-600 hover:text-blue-800 disabled:opacity-40"
+          title="저장"
+        >
+          <Check size={13} />
+        </button>
+        <button
+          onClick={() => setEditing(false)}
+          className="p-0.5 text-gray-400 hover:text-gray-600"
+          title="취소"
+        >
+          <X size={13} />
+        </button>
+      </div>
+      {error && <p className="text-xs text-red-500 mt-0.5">{error}</p>}
+    </div>
+  );
 }
 
 // ── SortHeader ────────────────────────────────────────────────────────────────
@@ -80,6 +192,7 @@ interface Props {
   onSortChange: (col: string, order: 'asc' | 'desc') => void;
   onRefreshOne: (code: string) => Promise<void>;
   onDrillDown: (securityCode: string) => void;
+  onSetTicker: (securityCode: string, tickerCode: string) => Promise<void>;
 }
 
 // ── Component ─────────────────────────────────────────────────────────────────
@@ -92,6 +205,7 @@ export function HoldingsTable({
   onSortChange,
   onRefreshOne,
   onDrillDown,
+  onSetTicker,
 }: Props) {
   const columns: ColumnDef<Holding>[] = [
     {
@@ -105,8 +219,12 @@ export function HoldingsTable({
         const h = row.original;
         return (
           <div>
-            <p className="font-medium text-gray-900 truncate max-w-[140px]">{h.security_name}</p>
-            <p className="text-xs text-gray-400">{h.security_code} · {h.market || '-'}</p>
+            <p className="font-medium text-gray-900 truncate max-w-[150px]" title={h.security_name}>{h.security_name}</p>
+            <div className="flex items-center gap-2 mt-0.5">
+              <TickerCell holding={h} onSetTicker={onSetTicker} />
+              <span className="text-xs text-gray-300">·</span>
+              <span className="text-xs text-gray-400">{h.market || '-'}</span>
+            </div>
           </div>
         );
       },
@@ -240,7 +358,7 @@ export function HoldingsTable({
         return (
           <div className="flex items-center gap-1 justify-end">
             <button
-              onClick={() => void onRefreshOne(h.security_code)}
+              onClick={() => void onRefreshOne(h.ticker_code?.trim() || h.security_code)}
               title="시세 갱신"
               className="p-1 text-gray-400 hover:text-blue-600 rounded transition-colors"
             >

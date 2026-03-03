@@ -115,6 +115,7 @@ export function SecuritiesAccountPage({ account, categories, onSyncBalance }: Pr
     refetch: holdingsRefetch,
     refreshAll,
     refreshOne,
+    setTicker,
   } = useHoldings({
     accountId: account.id,
     includeZero,
@@ -152,7 +153,7 @@ export function SecuritiesAccountPage({ account, categories, onSyncBalance }: Pr
   ];
 
   return (
-    <>
+    <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
       {/* Tabs */}
       <div className="bg-white border-b border-gray-200 px-6 flex-shrink-0 flex items-center justify-between">
         <div className="flex gap-0">
@@ -215,7 +216,7 @@ export function SecuritiesAccountPage({ account, categories, onSyncBalance }: Pr
               {recalculating ? '재계산 중...' : '보유종목 재계산'}
             </button>
           </div>
-          <div className="flex-1 bg-white mt-4 mx-4 mb-4 rounded-xl border border-gray-200 overflow-hidden">
+          <div className="flex-1 bg-white mt-4 mx-4 mb-4 rounded-xl border border-gray-200 overflow-y-auto min-h-0">
             <HoldingsTable
               holdings={holdingsData?.holdings ?? []}
               loading={holdingsLoading}
@@ -224,6 +225,7 @@ export function SecuritiesAccountPage({ account, categories, onSyncBalance }: Pr
               onSortChange={handleHoldingsSortChange}
               onRefreshOne={refreshOne}
               onDrillDown={handleDrillDown}
+              onSetTicker={setTicker}
             />
           </div>
         </>
@@ -289,6 +291,6 @@ export function SecuritiesAccountPage({ account, categories, onSyncBalance }: Pr
           onImported={handleImported}
         />
       )}
-    </>
+    </div>
   );
 }

@@ -174,7 +174,7 @@ export function MainContent() {
   // ── Individual securities account → delegate to SecuritiesAccountPage ────────
   if (selectedAccount && selectedAccount.type === 'securities') {
     return (
-      <main className="flex-1 flex flex-col bg-slate-50 overflow-auto min-w-0">
+      <main className="flex-1 flex flex-col bg-slate-50 overflow-hidden min-w-0">
         {/* Account header */}
         <header className="bg-white border-b border-gray-200 px-6 py-4 flex-shrink-0">
           <div className="flex items-center gap-4">

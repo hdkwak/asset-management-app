@@ -21,6 +21,8 @@ const SECURITIES_FIELDS: { key: string; label: string; required: boolean }[] = [
   { key: 'type',          label: '거래 유형', required: false },
   { key: 'security',      label: '종목명',   required: false },
   { key: 'security_code', label: '종목코드', required: false },
+  { key: 'quantity',      label: '수량',     required: false },
+  { key: 'unit_price',    label: '단가',     required: false },
   { key: 'description',   label: '거래 내용', required: false },
   { key: 'amount',        label: '거래 금액', required: true },
   { key: 'balance',       label: '잔고',     required: false },

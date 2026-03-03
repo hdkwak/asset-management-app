@@ -109,6 +109,7 @@ function initSchema(database: DatabaseSync): void {
       account_id        INTEGER NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
       security_code     TEXT NOT NULL,
       security_name     TEXT NOT NULL DEFAULT '',
+      ticker_code       TEXT DEFAULT '',
       quantity          REAL NOT NULL DEFAULT 0,
       avg_buy_price     REAL NOT NULL DEFAULT 0,
       total_buy_amount  REAL NOT NULL DEFAULT 0,
@@ -188,6 +189,15 @@ function initSchema(database: DatabaseSync): void {
       database.exec(sql);
       console.log(`[DB Migration] institution_profiles: ${col} 컬럼 추가`);
     }
+  }
+
+  // ── Migration: add ticker_code to holdings ────────────────────────────────
+  const holdingsCols = database
+    .prepare('PRAGMA table_info(holdings)')
+    .all() as { name: string }[];
+  if (!holdingsCols.some((c) => c.name === 'ticker_code')) {
+    database.exec("ALTER TABLE holdings ADD COLUMN ticker_code TEXT DEFAULT ''");
+    console.log('[DB Migration] holdings: ticker_code 컬럼 추가');
   }
 
   // ── Seed categories ──────────────────────────────────────────────────────────

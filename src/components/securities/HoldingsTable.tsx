@@ -193,6 +193,7 @@ interface Props {
   onRefreshOne: (code: string) => Promise<void>;
   onDrillDown: (securityCode: string) => void;
   onSetTicker: (securityCode: string, tickerCode: string) => Promise<void>;
+  showAccountColumn?: boolean;
 }
 
 // ── Component ─────────────────────────────────────────────────────────────────
@@ -206,8 +207,24 @@ export function HoldingsTable({
   onRefreshOne,
   onDrillDown,
   onSetTicker,
+  showAccountColumn,
 }: Props) {
+  const accountColumn: ColumnDef<Holding> = {
+    id: 'account_name',
+    accessorKey: 'account_name',
+    size: 100,
+    header: () => (
+      <span className="text-xs font-semibold text-gray-500 uppercase tracking-wider">계좌</span>
+    ),
+    cell: ({ getValue }) => (
+      <span className="text-xs text-gray-600 truncate max-w-[90px] block" title={String(getValue() ?? '')}>
+        {String(getValue() ?? '-')}
+      </span>
+    ),
+  };
+
   const columns: ColumnDef<Holding>[] = [
+    ...(showAccountColumn ? [accountColumn] : []),
     {
       id: 'security',
       accessorKey: 'security_name',

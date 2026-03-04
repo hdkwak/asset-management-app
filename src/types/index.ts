@@ -193,15 +193,24 @@ export interface RecentTransaction {
   created_at: string;
 }
 
+export interface TopHolding {
+  security_name: string;
+  eval_amount: number;
+  total_buy_amount: number;
+  unrealized_pnl_rate: number;
+}
+
 export interface SummaryData {
   totalBankBalance: number;
   totalSecuritiesBalance: number;
+  totalSecuritiesEval: number;
   totalAssets: number;
   bankAccountCount: number;
   securitiesAccountCount: number;
   thisMonthIncome: number;
   thisMonthExpense: number;
   thisMonthNet: number;
+  topHoldings: TopHolding[];
   recentTransactions: RecentTransaction[];
 }
 
@@ -300,6 +309,72 @@ export interface ImportPreviewResponse {
 export interface ImportConfirmResponse {
   saved: number;
   duplicates: number;
+}
+
+// ── Securities Analytics (Phase 3 Step 4) ────────────────────────────────────
+
+export interface SecuritiesAnalyticsSummary {
+  total_buy_amount: number;
+  total_eval_amount: number;
+  total_unrealized_pnl: number;
+  total_realized_pnl: number;
+  holding_count: number;
+  account_count: number;
+  total_dividend: number;
+}
+
+export interface SecurityAllocation {
+  security_code: string;
+  security_name: string;
+  account_name: string;
+  account_color: string;
+  total_buy_amount: number;
+  current_price: number;
+  eval_amount: number;
+  realized_pnl: number;
+  avg_buy_price: number;
+  quantity: number;
+  ratio: number;
+  unrealized_pnl: number;
+  unrealized_pnl_rate: number;
+}
+
+export interface AccountAllocation {
+  account_id: number;
+  account_name: string;
+  account_color: string;
+  eval_amount: number;
+  ratio: number;
+}
+
+export interface PortfolioHistoryPoint {
+  date: string;
+  eval_amount: number;
+  buy_amount: number;
+}
+
+export interface PnlRanking {
+  security_code: string;
+  security_name: string;
+  total_buy_amount: number;
+  eval_amount: number;
+  realized_pnl: number;
+  unrealized_pnl: number;
+  unrealized_pnl_rate: number;
+}
+
+export interface MonthlyDividend {
+  month: string;
+  amount: number;
+}
+
+export interface SecuritiesAnalyticsResponse {
+  summary: SecuritiesAnalyticsSummary;
+  by_security: SecurityAllocation[];
+  by_account: AccountAllocation[];
+  pnl_ranking: PnlRanking[];
+  monthly_dividend: MonthlyDividend[];
+  portfolio_history: PortfolioHistoryPoint[];
 }
 
 // ── Holdings (Phase 3) ────────────────────────────────────────────────────────

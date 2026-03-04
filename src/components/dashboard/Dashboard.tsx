@@ -2,6 +2,8 @@ import React, { useEffect, useState } from 'react';
 import { Landmark, TrendingUp, Wallet, ArrowUpRight, ArrowDownRight, TrendingDown } from 'lucide-react';
 import type { SummaryData } from '../../types';
 import { getSummary } from '../../api/client';
+import { AssetCompositionChart } from './AssetCompositionChart';
+import { SecuritiesMiniWidget } from './SecuritiesMiniWidget';
 
 function fmt(n: number) {
   return `₩${Math.abs(n).toLocaleString('ko-KR')}`;
@@ -55,13 +57,14 @@ export function Dashboard() {
   if (!summary) return null;
 
   const recent = summary.recentTransactions;
+  const securitiesEval = summary.totalSecuritiesEval ?? summary.totalSecuritiesBalance;
 
   return (
     <div className="flex-1 overflow-auto bg-slate-50 p-6">
       <h2 className="text-lg font-bold text-gray-900 mb-4">자산 요약</h2>
 
-      {/* Summary cards */}
-      <div className="grid grid-cols-2 xl:grid-cols-4 gap-4 mb-8">
+      {/* KPI cards */}
+      <div className="grid grid-cols-2 xl:grid-cols-4 gap-4 mb-6">
         <SummaryCard
           label="총 자산"
           value={fmt(summary.totalAssets)}
@@ -78,7 +81,7 @@ export function Dashboard() {
         />
         <SummaryCard
           label="증권 평가금액 합계"
-          value={fmt(summary.totalSecuritiesBalance)}
+          value={fmt(securitiesEval)}
           sub={`${summary.securitiesAccountCount}개 계좌`}
           icon={<TrendingUp size={18} />}
           color="#7C3AED"
@@ -90,6 +93,17 @@ export function Dashboard() {
           icon={(summary.thisMonthNet ?? 0) >= 0 ? <TrendingUp size={18} /> : <TrendingDown size={18} />}
           color={(summary.thisMonthNet ?? 0) >= 0 ? '#059669' : '#DC2626'}
         />
+      </div>
+
+      {/* Asset composition + top holdings */}
+      <div className="grid grid-cols-3 gap-4 mb-6">
+        <AssetCompositionChart
+          bankBalance={summary.totalBankBalance}
+          securitiesEval={securitiesEval}
+        />
+        <div className="col-span-2">
+          <SecuritiesMiniWidget holdings={summary.topHoldings ?? []} />
+        </div>
       </div>
 
       {/* Recent transactions */}

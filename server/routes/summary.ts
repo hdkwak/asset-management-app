@@ -1,9 +1,19 @@
 import { Router } from 'express';
 import { getDb } from '../db';
+import { cacheGet, cacheSet } from '../utils/memoryCache';
 
 const router = Router();
 
+const CACHE_KEY = 'summary';
+const CACHE_TTL = 30_000; // 30s
+
 router.get('/', (_req, res) => {
+  const cached = cacheGet<object>(CACHE_KEY);
+  if (cached) {
+    res.json(cached);
+    return;
+  }
+
   const db = getDb();
 
   const bankRow = db
@@ -21,6 +31,35 @@ router.get('/', (_req, res) => {
   const secCountRow = db
     .prepare(`SELECT COUNT(*) as cnt FROM accounts WHERE type = 'securities'`)
     .get() as { cnt: number };
+
+  // Real securities evaluation from holdings × price_cache
+  const secEvalRow = db.prepare(`
+    SELECT COALESCE(SUM(h.quantity * COALESCE(pc.current_price, h.avg_buy_price)), 0) AS eval
+    FROM holdings h
+    LEFT JOIN price_cache pc ON pc.security_code = COALESCE(NULLIF(h.ticker_code,''), h.security_code)
+    WHERE h.quantity > 0
+  `).get() as { eval: number };
+
+  // Top 5 holdings by abs unrealized pnl rate
+  type RawHolding = { security_name: string; eval_amount: number; total_buy_amount: number };
+  const rawRows = db.prepare(`
+    SELECT h.security_name,
+      SUM(h.quantity * COALESCE(pc.current_price, h.avg_buy_price)) AS eval_amount,
+      SUM(h.total_buy_amount) AS total_buy_amount
+    FROM holdings h
+    LEFT JOIN price_cache pc ON pc.security_code = COALESCE(NULLIF(h.ticker_code,''), h.security_code)
+    WHERE h.quantity > 0
+    GROUP BY h.security_name
+    ORDER BY ABS((SUM(h.quantity * COALESCE(pc.current_price, h.avg_buy_price)) - SUM(h.total_buy_amount)) / NULLIF(SUM(h.total_buy_amount), 0)) DESC
+    LIMIT 5
+  `).all() as RawHolding[];
+
+  const topHoldings = rawRows.map(r => ({
+    ...r,
+    unrealized_pnl_rate: r.total_buy_amount > 0
+      ? Math.round(((r.eval_amount - r.total_buy_amount) / r.total_buy_amount) * 10000) / 100
+      : 0,
+  }));
 
   // This-month income / expense KPI (bank transactions only)
   const thisMonthStart = new Date();
@@ -64,17 +103,23 @@ router.get('/', (_req, res) => {
     })
     .slice(0, 7);
 
-  res.json({
+  const result = {
     totalBankBalance: bankRow.total,
     totalSecuritiesBalance: secRow.total,
-    totalAssets: bankRow.total + secRow.total,
+    totalSecuritiesEval: secEvalRow.eval,
+    totalAssets: bankRow.total + secEvalRow.eval,
     bankAccountCount: bankCountRow.cnt,
     securitiesAccountCount: secCountRow.cnt,
     thisMonthIncome: monthlyKpi.income,
     thisMonthExpense: monthlyKpi.expense,
     thisMonthNet: monthlyKpi.income - monthlyKpi.expense,
+    topHoldings,
     recentTransactions,
-  });
+  };
+
+  cacheSet(CACHE_KEY, result, CACHE_TTL);
+  res.json(result);
 });
 
+export { CACHE_KEY as SUMMARY_CACHE_KEY };
 export default router;

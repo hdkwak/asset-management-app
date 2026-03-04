@@ -14,6 +14,7 @@ import type {
   FilterState,
   SummaryData,
   BankAnalyticsResponse,
+  SecuritiesAnalyticsResponse,
   BackupData,
   RestoreStats,
   AppSettings,
@@ -139,6 +140,12 @@ export const getBankAnalytics = (params: {
   if (params.year)      p.set('year',       String(params.year));
   if (params.month)     p.set('month',      String(params.month));
   return request<BankAnalyticsResponse>(`/analytics/bank?${p}`);
+};
+
+export const getSecuritiesAnalytics = (params: { account_id?: number | 'all' }) => {
+  const p = new URLSearchParams();
+  if (params.account_id) p.set('account_id', String(params.account_id));
+  return request<SecuritiesAnalyticsResponse>(`/analytics/securities?${p}`);
 };
 
 // ── Import ────────────────────────────────────────────────────────────────────

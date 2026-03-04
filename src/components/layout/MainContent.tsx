@@ -9,6 +9,7 @@ import { ImportModal } from '../import/ImportModal';
 import { Dashboard } from '../dashboard/Dashboard';
 import { BankAnalytics } from '../analytics/BankAnalytics';
 import { SettingsPage } from '../../pages/SettingsPage';
+import { SecuritiesAllPage } from '../../pages/SecuritiesAllPage';
 import { ImportHistoryPanel } from '../import/ImportHistory';
 import { SecuritiesAccountPage } from '../securities/SecuritiesAccountPage';
 import type { AnyTransaction, BankTransaction, SecuritiesTransaction, Category, CreateTransactionPayload, AccountType, FilterState } from '../../types';
@@ -204,6 +205,15 @@ export function MainContent() {
           categories={categories}
           onSyncBalance={syncBalance}
         />
+      </main>
+    );
+  }
+
+  // ── Securities group → delegate to SecuritiesAllPage ─────────────────────
+  if (isGroupView && groupAccountType === 'securities') {
+    return (
+      <main className="flex-1 flex flex-col bg-slate-50 overflow-hidden min-w-0">
+        <SecuritiesAllPage accounts={accounts.filter((a) => a.type === 'securities')} />
       </main>
     );
   }

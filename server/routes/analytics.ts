@@ -1,5 +1,6 @@
 import { Router, Request, Response } from 'express';
 import { getDb } from '../db';
+import { buildPortfolioHistory } from '../services/portfolioHistory';
 
 const router = Router();
 
@@ -136,6 +137,196 @@ router.get('/bank', (req: Request, res: Response) => {
     byCategory,
     dailyBalance,
     categoryMonthly,
+  });
+});
+
+// GET /api/analytics/securities?account_id=<id>|all
+router.get('/securities', (req: Request, res: Response) => {
+  const db = getDb();
+  const q = req.query as Record<string, string>;
+  const accountIdParam = q.account_id ?? 'all';
+  const isAll = !accountIdParam || accountIdParam === 'all';
+  const accountId = isAll ? null : Number(accountIdParam);
+
+  if (!isAll && (!accountId || isNaN(accountId))) {
+    res.status(400).json({ error: 'account_id가 올바르지 않습니다.' });
+    return;
+  }
+
+  // LIKE-based matching covers variants like '배당금입금', 'ETF분배금입금', 'ETF/상장클래스 분배금입금'
+  const DIVIDEND_COND = "(st.type LIKE '%배당%' OR st.type LIKE '%분배금%' OR st.type LIKE '%이자수령%')";
+
+  // Dynamic filters embedded as safe numbers
+  const holdingAndFilter = isAll ? '' : `AND h.account_id = ${accountId}`;
+  const holdingQtyFilter = isAll
+    ? 'WHERE h.quantity > 0'
+    : `WHERE h.quantity > 0 AND h.account_id = ${accountId}`;
+  const holdingFilter = isAll ? '' : `WHERE h.account_id = ${accountId}`;
+  const txAndFilter = isAll ? '' : `AND st.account_id = ${accountId}`;
+
+  // ── Summary ────────────────────────────────────────────────────────────────
+  const summaryRow = db.prepare(`
+    SELECT
+      COALESCE(SUM(h.total_buy_amount), 0)                                              AS total_buy_amount,
+      COALESCE(SUM(h.quantity * COALESCE(pc.current_price, h.avg_buy_price)), 0)        AS total_eval_amount,
+      COALESCE(SUM(h.realized_pnl), 0)                                                  AS total_realized_pnl,
+      COUNT(CASE WHEN h.quantity > 0 THEN 1 END)                                        AS holding_count,
+      COUNT(DISTINCT h.account_id)                                                      AS account_count
+    FROM holdings h
+    LEFT JOIN price_cache pc ON pc.security_code = COALESCE(NULLIF(h.ticker_code,''), h.security_code)
+    ${holdingFilter}
+  `).get() as {
+    total_buy_amount: number;
+    total_eval_amount: number;
+    total_realized_pnl: number;
+    holding_count: number;
+    account_count: number;
+  };
+
+  const divRow = db.prepare(`
+    SELECT COALESCE(SUM(ABS(st.amount)), 0) AS total_dividend
+    FROM securities_transactions st
+    WHERE ${DIVIDEND_COND}
+    ${txAndFilter}
+  `).get() as { total_dividend: number };
+
+  const totalEval = summaryRow.total_eval_amount || 0;
+  const totalBuy = summaryRow.total_buy_amount || 0;
+
+  const summary = {
+    total_buy_amount: totalBuy,
+    total_eval_amount: totalEval,
+    total_unrealized_pnl: totalEval - totalBuy,
+    total_realized_pnl: summaryRow.total_realized_pnl || 0,
+    holding_count: summaryRow.holding_count || 0,
+    account_count: summaryRow.account_count || 0,
+    total_dividend: divRow.total_dividend || 0,
+  };
+
+  // ── By Security (종목별 합산 — 같은 종목이 여러 계좌에 분산 보유된 경우 합산) ──────
+  const bySecurityRows = db.prepare(`
+    SELECT
+      h.security_name,
+      MIN(h.security_code)                                                       AS security_code,
+      SUM(h.total_buy_amount)                                                    AS total_buy_amount,
+      SUM(h.quantity * COALESCE(pc.current_price, h.avg_buy_price))              AS eval_amount,
+      SUM(h.realized_pnl)                                                        AS realized_pnl,
+      SUM(h.quantity)                                                            AS quantity,
+      CASE WHEN SUM(h.quantity) > 0
+           THEN SUM(h.total_buy_amount) / SUM(h.quantity)
+           ELSE 0 END                                                            AS avg_buy_price,
+      MAX(COALESCE(pc.current_price, h.avg_buy_price))                           AS current_price
+    FROM holdings h
+    LEFT JOIN price_cache pc ON pc.security_code = COALESCE(NULLIF(h.ticker_code,''), h.security_code)
+    ${holdingQtyFilter}
+    GROUP BY h.security_name
+    ORDER BY eval_amount DESC
+  `).all() as {
+    security_code: string;
+    security_name: string;
+    total_buy_amount: number;
+    current_price: number;
+    eval_amount: number;
+    realized_pnl: number;
+    avg_buy_price: number;
+    quantity: number;
+  }[];
+
+  const bySecurity = bySecurityRows.map((r) => ({
+    ...r,
+    account_name: '',
+    account_color: '',
+    ratio: totalEval > 0 ? Math.round((r.eval_amount / totalEval) * 1000) / 10 : 0,
+    unrealized_pnl: r.total_buy_amount > 0 ? r.eval_amount - r.total_buy_amount : 0,
+    unrealized_pnl_rate:
+      r.total_buy_amount > 0
+        ? Math.round(((r.eval_amount - r.total_buy_amount) / r.total_buy_amount) * 10000) / 100
+        : 0,
+  }));
+
+  // ── By Account ────────────────────────────────────────────────────────────
+  const byAccountRows = db.prepare(`
+    SELECT
+      h.account_id,
+      a.name  AS account_name,
+      a.color AS account_color,
+      COALESCE(SUM(h.quantity * COALESCE(pc.current_price, h.avg_buy_price)), 0) AS eval_amount
+    FROM holdings h
+    JOIN accounts a ON a.id = h.account_id
+    LEFT JOIN price_cache pc ON pc.security_code = COALESCE(NULLIF(h.ticker_code,''), h.security_code)
+    ${holdingQtyFilter}
+    GROUP BY h.account_id
+    ORDER BY eval_amount DESC
+  `).all() as {
+    account_id: number;
+    account_name: string;
+    account_color: string;
+    eval_amount: number;
+  }[];
+
+  const byAccount = byAccountRows.map((r) => ({
+    ...r,
+    ratio: totalEval > 0 ? Math.round((r.eval_amount / totalEval) * 1000) / 10 : 0,
+  }));
+
+  // ── PnL Ranking ───────────────────────────────────────────────────────────
+  const pnlRawRows = db.prepare(`
+    SELECT
+      h.security_name,
+      MIN(h.security_code) AS security_code,
+      SUM(h.total_buy_amount) AS total_buy_amount,
+      SUM(h.quantity * COALESCE(pc.current_price, h.avg_buy_price)) AS eval_amount,
+      SUM(h.realized_pnl) AS realized_pnl
+    FROM holdings h
+    LEFT JOIN price_cache pc ON pc.security_code = COALESCE(NULLIF(h.ticker_code,''), h.security_code)
+    ${holdingQtyFilter}
+    GROUP BY h.security_name
+  `).all() as {
+    security_code: string;
+    security_name: string;
+    total_buy_amount: number;
+    eval_amount: number;
+    realized_pnl: number;
+  }[];
+
+  const pnlWithCalc = pnlRawRows.map((r) => {
+    const unrealizedPnl = r.total_buy_amount > 0 ? r.eval_amount - r.total_buy_amount : 0;
+    const unrealizedPnlRate =
+      r.total_buy_amount > 0
+        ? Math.round((unrealizedPnl / r.total_buy_amount) * 10000) / 100
+        : 0;
+    return { ...r, unrealized_pnl: unrealizedPnl, unrealized_pnl_rate: unrealizedPnlRate };
+  });
+
+  // Top 15 by abs(pnl_rate), sorted ascending (most negative first)
+  const pnlRanking = pnlWithCalc
+    .sort((a, b) => Math.abs(b.unrealized_pnl_rate) - Math.abs(a.unrealized_pnl_rate))
+    .slice(0, 15)
+    .sort((a, b) => a.unrealized_pnl_rate - b.unrealized_pnl_rate);
+
+  // ── Monthly Dividend ───────────────────────────────────────────────────────
+  const monthlyDividend = db.prepare(`
+    SELECT
+      strftime('%Y-%m', st.date) AS month,
+      COALESCE(SUM(ABS(st.amount)), 0) AS amount
+    FROM securities_transactions st
+    WHERE ${DIVIDEND_COND}
+    ${txAndFilter}
+    AND st.date >= date('now', '-11 months', 'start of month')
+    GROUP BY month
+    ORDER BY month
+  `).all() as { month: string; amount: number }[];
+
+  // ── Portfolio History ──────────────────────────────────────────────────────
+  const portfolioHistory = buildPortfolioHistory(accountId);
+
+  res.json({
+    summary,
+    by_security: bySecurity,
+    by_account: byAccount,
+    pnl_ranking: pnlRanking,
+    monthly_dividend: monthlyDividend,
+    portfolio_history: portfolioHistory,
   });
 });
 

@@ -6,12 +6,14 @@ const BUY_TYPES = new Set([
   '매수',
   '주식매수입고', '주식매수', '매수입고',
   '신용매수', '신용매수입고',
+  '대체입고', '계좌대체입고', '타사대체입고',
   'buy', 'BUY',
 ]);
 const SELL_TYPES = new Set([
   '매도',
   '주식매도출고', '주식매도', '매도출고',
   '신용매도', '신용매도출고',
+  '대체출고', '계좌대체출고', '타사대체출고',
   'sell', 'SELL',
 ]);
 
@@ -57,7 +59,8 @@ function applyTransaction(h: HoldingState, tx: TxRow): void {
       h.avgBuyPrice = calcMovingAvgPrice(h.quantity, h.avgBuyPrice, qty, price);
       h.quantity += qty;
     }
-    h.totalBuyAmount += Math.abs(tx.amount);
+    const buyAmount = Math.abs(tx.amount) > 0 ? Math.abs(tx.amount) : qty * price;
+    h.totalBuyAmount += buyAmount;
   } else if (SELL_TYPES.has(tx.type)) {
     const qty = tx.quantity;
     const price =
@@ -77,18 +80,15 @@ function applyTransaction(h: HoldingState, tx: TxRow): void {
 function computeSnapshot(
   date: string,
   holdingMap: Map<string, HoldingState>,
-  priceMap: Map<string, number>,
-  tickerMap: Map<string, string>,
   cashTotal: number,
 ): HistoryPoint {
-  let evalAmount = cashTotal; // 예수금 포함
+  // 과거 스냅샷은 현재가 대신 취득원가(avg_buy_price) 사용
+  // → 매도 시 실현손익만 반영, 현재가 역산에 의한 가상 급락 방지
+  let evalAmount = cashTotal;
   let buyAmount = 0;
-  for (const [key, h] of holdingMap) {
+  for (const [, h] of holdingMap) {
     if (h.quantity > 0) {
-      const ticker = tickerMap.get(key);
-      const lookupCode = ticker ?? h.securityCode;
-      const price = priceMap.get(lookupCode) ?? h.avgBuyPrice;
-      evalAmount += h.quantity * price;
+      evalAmount += h.quantity * h.avgBuyPrice;
     }
     buyAmount += h.totalBuyAmount;
   }
@@ -101,25 +101,6 @@ function computeSnapshot(
  */
 export function buildPortfolioHistory(accountId: number | null): HistoryPoint[] {
   const db = getDb();
-
-  // Load price cache as Map<security_code, current_price>
-  const priceRows = db
-    .prepare('SELECT security_code, current_price FROM price_cache')
-    .all() as { security_code: string; current_price: number }[];
-  const priceMap = new Map<string, number>(
-    priceRows.map((r) => [r.security_code, r.current_price]),
-  );
-
-  // Load ticker_code mapping keyed by "accountId-securityCode"
-  const tickerQuery = accountId
-    ? "SELECT account_id, security_code, ticker_code FROM holdings WHERE account_id = ? AND ticker_code IS NOT NULL AND ticker_code != ''"
-    : "SELECT account_id, security_code, ticker_code FROM holdings WHERE ticker_code IS NOT NULL AND ticker_code != ''";
-  const tickerRows = accountId
-    ? (db.prepare(tickerQuery).all(accountId) as { account_id: number; security_code: string; ticker_code: string }[])
-    : (db.prepare(tickerQuery).all() as { account_id: number; security_code: string; ticker_code: string }[]);
-  const tickerMap = new Map<string, string>(
-    tickerRows.map((r) => [`${r.account_id}-${r.security_code}`, r.ticker_code]),
-  );
 
   // Fetch all relevant transactions ordered by date
   const txSql = `
@@ -151,14 +132,23 @@ export function buildPortfolioHistory(accountId: number | null): HistoryPoint[] 
   for (const tx of txRows) {
     if (tx.date !== currentDate) {
       if (currentDate) {
-        result.push(computeSnapshot(currentDate, holdingMap, priceMap, tickerMap, getCashTotal()));
+        result.push(computeSnapshot(currentDate, holdingMap, getCashTotal()));
       }
       currentDate = tx.date;
     }
 
-    // 예수금 잔고 업데이트 (balance 가 있는 거래만)
+    // 예수금 잔고 업데이트
     if (tx.balance > 0) {
+      // balance 컬럼이 있으면 절대값으로 우선 사용
       cashMap.set(tx.account_id, tx.balance);
+    } else {
+      // balance 미기록 시 매수/매도 금액으로 상대적 현금 추정
+      const cur = cashMap.get(tx.account_id) ?? 0;
+      if (SELL_TYPES.has(tx.type)) {
+        cashMap.set(tx.account_id, cur + Math.abs(tx.amount)); // 매도 → 현금 증가
+      } else if (BUY_TYPES.has(tx.type)) {
+        cashMap.set(tx.account_id, Math.max(0, cur - Math.abs(tx.amount))); // 매수 → 현금 감소
+      }
     }
 
     const code = tx.security_code?.trim();
@@ -179,7 +169,7 @@ export function buildPortfolioHistory(accountId: number | null): HistoryPoint[] 
   }
 
   if (currentDate) {
-    result.push(computeSnapshot(currentDate, holdingMap, priceMap, tickerMap, getCashTotal()));
+    result.push(computeSnapshot(currentDate, holdingMap, getCashTotal()));
   }
 
   return result;

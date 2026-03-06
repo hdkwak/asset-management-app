@@ -6,6 +6,7 @@ const BUY_TYPES = new Set([
   '매수',
   '주식매수입고', '주식매수', '매수입고',
   '신용매수', '신용매수입고',
+  '대체입고', '계좌대체입고', '타사대체입고',  // 타 계좌/증권사 이전 입고
   'buy', 'BUY',
 ]);
 // 매도로 처리할 거래 유형 (증권사별 명칭 포함)
@@ -13,6 +14,7 @@ const SELL_TYPES = new Set([
   '매도',
   '주식매도출고', '주식매도', '매도출고',
   '신용매도', '신용매도출고',
+  '대체출고', '계좌대체출고', '타사대체출고',  // 타 계좌/증권사 이전 출고
   'sell', 'SELL',
 ]);
 
@@ -66,8 +68,9 @@ function applyTransaction(h: HoldingState, tx: TxRow): void {
       h.avgBuyPrice = calcMovingAvgPrice(h.quantity, h.avgBuyPrice, qty, price);
       h.quantity += qty;
     }
-    // 수량 없어도 매수금액은 누적 (total_buy_amount 추적)
-    h.totalBuyAmount += Math.abs(tx.amount);
+    // amount=0인 대체입고 등: qty×price로 매수원금 추정
+    const buyAmount = Math.abs(tx.amount) > 0 ? Math.abs(tx.amount) : qty * price;
+    h.totalBuyAmount += buyAmount;
 
   } else if (SELL_TYPES.has(tx.type)) {
     const qty = tx.quantity;

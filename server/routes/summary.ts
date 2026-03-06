@@ -106,8 +106,8 @@ router.get('/', (_req, res) => {
   const result = {
     totalBankBalance: bankRow.total,
     totalSecuritiesBalance: secRow.total,
-    totalSecuritiesEval: secEvalRow.eval,
-    totalAssets: bankRow.total + secEvalRow.eval,
+    totalSecuritiesEval: secEvalRow.eval + secRow.total,   // 주식 평가 + 예수금
+    totalAssets: bankRow.total + secEvalRow.eval + secRow.total,
     bankAccountCount: bankCountRow.cnt,
     securitiesAccountCount: secCountRow.cnt,
     thisMonthIncome: monthlyKpi.income,

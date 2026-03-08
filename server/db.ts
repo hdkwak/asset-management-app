@@ -52,18 +52,20 @@ function initSchema(database: DatabaseSync): void {
     );
 
     CREATE TABLE IF NOT EXISTS securities_transactions (
-      id             INTEGER PRIMARY KEY AUTOINCREMENT,
-      account_id     INTEGER NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
-      date           TEXT NOT NULL,
-      type           TEXT NOT NULL DEFAULT '기타',
-      security       TEXT DEFAULT '',
-      security_code  TEXT DEFAULT '',
-      description    TEXT DEFAULT '',
-      amount         REAL NOT NULL,
-      balance        REAL DEFAULT 0,
-      import_hash    TEXT,
-      created_at     TEXT DEFAULT (datetime('now')),
-      updated_at     TEXT DEFAULT (datetime('now')),
+      id               INTEGER PRIMARY KEY AUTOINCREMENT,
+      account_id       INTEGER NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+      date             TEXT NOT NULL,
+      type             TEXT NOT NULL DEFAULT '기타',
+      security         TEXT DEFAULT '',
+      security_code    TEXT DEFAULT '',
+      description      TEXT DEFAULT '',
+      amount           REAL NOT NULL,
+      balance          REAL DEFAULT 0,
+      foreign_amount   REAL DEFAULT 0,
+      foreign_currency TEXT DEFAULT '',
+      import_hash      TEXT,
+      created_at       TEXT DEFAULT (datetime('now')),
+      updated_at       TEXT DEFAULT (datetime('now')),
       UNIQUE(account_id, import_hash)
     );
 
@@ -105,16 +107,20 @@ function initSchema(database: DatabaseSync): void {
     );
 
     CREATE TABLE IF NOT EXISTS holdings (
-      id                INTEGER PRIMARY KEY AUTOINCREMENT,
-      account_id        INTEGER NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
-      security_code     TEXT NOT NULL,
-      security_name     TEXT NOT NULL DEFAULT '',
-      ticker_code       TEXT DEFAULT '',
-      quantity          REAL NOT NULL DEFAULT 0,
-      avg_buy_price     REAL NOT NULL DEFAULT 0,
-      total_buy_amount  REAL NOT NULL DEFAULT 0,
-      realized_pnl      REAL NOT NULL DEFAULT 0,
-      last_updated      TEXT DEFAULT (datetime('now')),
+      id                  INTEGER PRIMARY KEY AUTOINCREMENT,
+      account_id          INTEGER NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+      security_code       TEXT NOT NULL,
+      security_name       TEXT NOT NULL DEFAULT '',
+      ticker_code         TEXT DEFAULT '',
+      currency            TEXT DEFAULT 'KRW',
+      quantity            REAL NOT NULL DEFAULT 0,
+      avg_buy_price       REAL NOT NULL DEFAULT 0,
+      total_buy_amount    REAL NOT NULL DEFAULT 0,
+      avg_buy_price_usd   REAL DEFAULT 0,
+      total_buy_usd       REAL DEFAULT 0,
+      realized_pnl        REAL NOT NULL DEFAULT 0,
+      realized_pnl_usd    REAL DEFAULT 0,
+      last_updated        TEXT DEFAULT (datetime('now')),
       UNIQUE(account_id, security_code)
     );
 
@@ -140,18 +146,37 @@ function initSchema(database: DatabaseSync): void {
     console.log('[DB Migration] bank_transactions: balance 컬럼 추가 완료');
   }
 
-  // ── Migration: add quantity/unit_price to securities_transactions ──────────
+  // ── Migration: add quantity/unit_price/foreign columns to securities_transactions ──────────
   const secCols = database
     .prepare('PRAGMA table_info(securities_transactions)')
     .all() as { name: string }[];
   const secMigrations: Record<string, string> = {
-    quantity:   'ALTER TABLE securities_transactions ADD COLUMN quantity REAL DEFAULT 0',
-    unit_price: 'ALTER TABLE securities_transactions ADD COLUMN unit_price REAL DEFAULT 0',
+    quantity:         'ALTER TABLE securities_transactions ADD COLUMN quantity REAL DEFAULT 0',
+    unit_price:       'ALTER TABLE securities_transactions ADD COLUMN unit_price REAL DEFAULT 0',
+    foreign_amount:   'ALTER TABLE securities_transactions ADD COLUMN foreign_amount REAL DEFAULT 0',
+    foreign_currency: "ALTER TABLE securities_transactions ADD COLUMN foreign_currency TEXT DEFAULT ''",
   };
   for (const [col, sql] of Object.entries(secMigrations)) {
     if (!secCols.some((c) => c.name === col)) {
       database.exec(sql);
       console.log(`[DB Migration] securities_transactions: ${col} 컬럼 추가`);
+    }
+  }
+
+  // ── Migration: add USD / currency columns to holdings ────────────────────
+  const holdCols = database
+    .prepare('PRAGMA table_info(holdings)')
+    .all() as { name: string }[];
+  const holdMigrations: Record<string, string> = {
+    currency:           "ALTER TABLE holdings ADD COLUMN currency TEXT DEFAULT 'KRW'",
+    avg_buy_price_usd:  'ALTER TABLE holdings ADD COLUMN avg_buy_price_usd REAL DEFAULT 0',
+    total_buy_usd:      'ALTER TABLE holdings ADD COLUMN total_buy_usd REAL DEFAULT 0',
+    realized_pnl_usd:   'ALTER TABLE holdings ADD COLUMN realized_pnl_usd REAL DEFAULT 0',
+  };
+  for (const [col, sql] of Object.entries(holdMigrations)) {
+    if (!holdCols.some((c) => c.name === col)) {
+      database.exec(sql);
+      console.log(`[DB Migration] holdings: ${col} 컬럼 추가`);
     }
   }
 

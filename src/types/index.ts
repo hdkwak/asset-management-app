@@ -106,6 +106,8 @@ export interface SecuritiesTransaction {
   balance: number;
   quantity: number;
   unit_price: number;
+  foreign_amount: number;
+  foreign_currency: string;  // 'USD' or ''
   import_hash: string | null;
   created_at: string;
   updated_at: string;
@@ -139,6 +141,8 @@ export interface CreateSecuritiesTransactionPayload {
   balance?: number;
   quantity?: number;
   unit_price?: number;
+  foreign_amount?: number;
+  foreign_currency?: string;
 }
 
 export type CreateTransactionPayload =
@@ -386,10 +390,14 @@ export interface Holding {
   security_code: string;
   security_name: string;
   ticker_code?: string;
+  currency: string;           // 'KRW' | 'USD'
   quantity: number;
   avg_buy_price: number;
   total_buy_amount: number;
+  avg_buy_price_usd: number;  // USD 평균 매입단가 (USD 종목)
+  total_buy_usd: number;      // USD 총 매입금액
   realized_pnl: number;
+  realized_pnl_usd: number;
   // price_cache (현재가, 없으면 0)
   current_price: number;
   prev_close: number;

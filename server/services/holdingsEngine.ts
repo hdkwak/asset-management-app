@@ -49,40 +49,52 @@ interface TxRow {
   type: string;
   security: string;
   security_code: string;
-  quantity: number;    // 수량 (0이면 미입력)
-  unit_price: number;  // 단가 (0이면 미입력)
-  amount: number;      // 거래금액
+  quantity: number;         // 수량 (0이면 미입력)
+  unit_price: number;       // 단가 (0이면 미입력)
+  amount: number;           // 거래금액 (KRW)
+  foreign_amount: number;   // 외화 거래금액 (USD 등, 0이면 없음)
+  foreign_currency: string; // 'USD' or ''
 }
 
 interface HoldingState {
   securityName: string;
+  currency: string;         // 'KRW' | 'USD'
   quantity: number;
   avgBuyPrice: number;
   totalBuyAmount: number;
+  avgBuyPriceUsd: number;   // USD 평균 매입단가 (USD 종목일 때만 유효)
+  totalBuyUsd: number;      // USD 총 매입금액
   realizedPnl: number;
+  realizedPnlUsd: number;   // USD 실현손익
 }
 
 const UPSERT_SQL = `
   INSERT INTO holdings
-    (account_id, security_code, security_name, quantity, avg_buy_price,
-     total_buy_amount, realized_pnl, last_updated)
-  VALUES (?, ?, ?, ?, ?, ?, ?, datetime('now'))
+    (account_id, security_code, security_name, currency, quantity, avg_buy_price,
+     total_buy_amount, avg_buy_price_usd, total_buy_usd, realized_pnl, realized_pnl_usd, last_updated)
+  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
   ON CONFLICT(account_id, security_code) DO UPDATE SET
-    security_name    = excluded.security_name,
-    quantity         = excluded.quantity,
-    avg_buy_price    = excluded.avg_buy_price,
-    total_buy_amount = excluded.total_buy_amount,
-    realized_pnl     = excluded.realized_pnl,
-    last_updated     = excluded.last_updated
+    security_name     = excluded.security_name,
+    currency          = excluded.currency,
+    quantity          = excluded.quantity,
+    avg_buy_price     = excluded.avg_buy_price,
+    total_buy_amount  = excluded.total_buy_amount,
+    avg_buy_price_usd = excluded.avg_buy_price_usd,
+    total_buy_usd     = excluded.total_buy_usd,
+    realized_pnl      = excluded.realized_pnl,
+    realized_pnl_usd  = excluded.realized_pnl_usd,
+    last_updated      = excluded.last_updated
 `;
 
 /** 거래 1건으로 보유 상태를 업데이트한다. */
 function applyTransaction(h: HoldingState, tx: TxRow): void {
   if (tx.security) h.securityName = tx.security;
+  // 외화 거래가 있으면 해당 통화로 설정 (USD 우선)
+  if (tx.foreign_currency) h.currency = tx.foreign_currency;
 
   if (isBuyTx(tx.type)) {
     const qty = tx.quantity;
-    // 단가: unit_price 우선, 없으면 금액÷수량으로 추정
+    // KRW 단가: unit_price 우선, 없으면 금액÷수량으로 추정
     const price =
       tx.unit_price > 0
         ? tx.unit_price
@@ -97,6 +109,16 @@ function applyTransaction(h: HoldingState, tx: TxRow): void {
     // amount=0인 대체입고 등: qty×price로 매수원금 추정
     const buyAmount = Math.abs(tx.amount) > 0 ? Math.abs(tx.amount) : qty * price;
     h.totalBuyAmount += buyAmount;
+
+    // USD 매입원가 추적
+    if (tx.foreign_currency === 'USD' && tx.foreign_amount !== 0) {
+      const usdAmt = Math.abs(tx.foreign_amount);
+      const usdPrice = qty > 0 ? usdAmt / qty : 0;
+      if (qty > 0 && usdPrice > 0) {
+        h.avgBuyPriceUsd = calcMovingAvgPrice(h.quantity - qty, h.avgBuyPriceUsd, qty, usdPrice);
+      }
+      h.totalBuyUsd += usdAmt;
+    }
 
   } else if (isSellTx(tx.type)) {
     const qty = tx.quantity;
@@ -113,6 +135,13 @@ function applyTransaction(h: HoldingState, tx: TxRow): void {
       // 매도된 비율만큼 총 매수원금 차감
       h.totalBuyAmount = Math.max(0, h.totalBuyAmount - h.avgBuyPrice * qty);
     }
+
+    // USD 실현손익 추적
+    if (tx.foreign_currency === 'USD' && tx.foreign_amount !== 0 && qty > 0) {
+      const usdSellPrice = Math.abs(tx.foreign_amount) / qty;
+      h.realizedPnlUsd += calcRealizedPnl(qty, usdSellPrice, h.avgBuyPriceUsd);
+      h.totalBuyUsd = Math.max(0, h.totalBuyUsd - h.avgBuyPriceUsd * qty);
+    }
   }
   // 배당/입금/출금/기타 → 변경 없음
 }
@@ -126,9 +155,11 @@ export function recalculateHoldings(accountId: number): void {
 
   const txRows = db.prepare(`
     SELECT date, type, security, security_code,
-           COALESCE(quantity, 0)   AS quantity,
-           COALESCE(unit_price, 0) AS unit_price,
-           amount
+           COALESCE(quantity, 0)         AS quantity,
+           COALESCE(unit_price, 0)       AS unit_price,
+           amount,
+           COALESCE(foreign_amount, 0)   AS foreign_amount,
+           COALESCE(foreign_currency,'') AS foreign_currency
     FROM securities_transactions
     WHERE account_id = ?
     ORDER BY date ASC, id ASC
@@ -142,10 +173,14 @@ export function recalculateHoldings(accountId: number): void {
     if (!holdingMap.has(code)) {
       holdingMap.set(code, {
         securityName: tx.security ?? '',
+        currency: 'KRW',
         quantity: 0,
         avgBuyPrice: 0,
         totalBuyAmount: 0,
+        avgBuyPriceUsd: 0,
+        totalBuyUsd: 0,
         realizedPnl: 0,
+        realizedPnlUsd: 0,
       });
     }
     applyTransaction(holdingMap.get(code)!, tx);
@@ -175,8 +210,10 @@ export function recalculateHoldings(accountId: number): void {
     // 활성 종목 upsert
     for (const [code, h] of holdingMap) {
       upsertStmt.run(
-        accountId, code, h.securityName,
-        h.quantity, h.avgBuyPrice, h.totalBuyAmount, h.realizedPnl
+        accountId, code, h.securityName, h.currency,
+        h.quantity, h.avgBuyPrice, h.totalBuyAmount,
+        h.avgBuyPriceUsd, h.totalBuyUsd,
+        h.realizedPnl, h.realizedPnlUsd
       );
     }
     db.exec('COMMIT');
@@ -203,9 +240,11 @@ export function recalculateHoldingForSecurity(
 
   const txRows = db.prepare(`
     SELECT date, type, security, security_code,
-           COALESCE(quantity, 0)   AS quantity,
-           COALESCE(unit_price, 0) AS unit_price,
-           amount
+           COALESCE(quantity, 0)         AS quantity,
+           COALESCE(unit_price, 0)       AS unit_price,
+           amount,
+           COALESCE(foreign_amount, 0)   AS foreign_amount,
+           COALESCE(foreign_currency,'') AS foreign_currency
     FROM securities_transactions
     WHERE account_id = ? AND security_code = ?
     ORDER BY date ASC, id ASC
@@ -222,15 +261,21 @@ export function recalculateHoldingForSecurity(
 
   const h: HoldingState = {
     securityName: '',
+    currency: 'KRW',
     quantity: 0,
     avgBuyPrice: 0,
     totalBuyAmount: 0,
+    avgBuyPriceUsd: 0,
+    totalBuyUsd: 0,
     realizedPnl: 0,
+    realizedPnlUsd: 0,
   };
   for (const tx of txRows) applyTransaction(h, tx);
 
   db.prepare(UPSERT_SQL).run(
-    accountId, securityCode, h.securityName,
-    h.quantity, h.avgBuyPrice, h.totalBuyAmount, h.realizedPnl
+    accountId, securityCode, h.securityName, h.currency,
+    h.quantity, h.avgBuyPrice, h.totalBuyAmount,
+    h.avgBuyPriceUsd, h.totalBuyUsd,
+    h.realizedPnl, h.realizedPnlUsd
   );
 }

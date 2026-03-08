@@ -175,10 +175,12 @@ router.post('/', (req: Request, res: Response) => {
     const {
       date, type = '기타', security = '', security_code = '',
       description = '', amount, balance = 0, quantity = 0, unit_price = 0,
+      foreign_amount = 0, foreign_currency = '',
     } = fields as {
       date: string; type?: string; security?: string; security_code?: string;
       description?: string; amount: number; balance?: number;
       quantity?: number; unit_price?: number;
+      foreign_amount?: number; foreign_currency?: string;
     };
     if (!date || amount === undefined) {
       res.status(400).json({ error: '날짜와 금액은 필수입니다.' }); return;
@@ -186,10 +188,13 @@ router.post('/', (req: Request, res: Response) => {
     const result = db
       .prepare(
         `INSERT INTO securities_transactions
-           (account_id, date, type, security, security_code, description, amount, balance, quantity, unit_price)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+           (account_id, date, type, security, security_code, description,
+            amount, balance, quantity, unit_price, foreign_amount, foreign_currency)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
       )
-      .run(id, date, type, security, security_code, description, Number(amount), Number(balance), Number(quantity), Number(unit_price));
+      .run(id, date, type, security, security_code, description,
+           Number(amount), Number(balance), Number(quantity), Number(unit_price),
+           Number(foreign_amount), foreign_currency);
     recalculateHoldingForSecurity(id, security_code);
     res.status(201).json(
       db.prepare('SELECT * FROM securities_transactions WHERE id = ?').get(Number(result.lastInsertRowid))
@@ -237,17 +242,20 @@ router.put('/:id', (req: Request, res: Response) => {
     const {
       date, type = '기타', security = '', security_code = '',
       description = '', amount, balance = 0, quantity = 0, unit_price = 0,
+      foreign_amount = 0, foreign_currency = '',
     } = fields as {
       date: string; type?: string; security?: string; security_code?: string;
       description?: string; amount: number; balance?: number;
       quantity?: number; unit_price?: number;
+      foreign_amount?: number; foreign_currency?: string;
     };
     db.prepare(
       `UPDATE securities_transactions
          SET date=?, type=?, security=?, security_code=?, description=?, amount=?, balance=?,
-             quantity=?, unit_price=?, updated_at=datetime('now')
+             quantity=?, unit_price=?, foreign_amount=?, foreign_currency=?, updated_at=datetime('now')
        WHERE id=?`
-    ).run(date, type, security, security_code, description, Number(amount), Number(balance), Number(quantity), Number(unit_price), txId);
+    ).run(date, type, security, security_code, description, Number(amount), Number(balance),
+          Number(quantity), Number(unit_price), Number(foreign_amount), foreign_currency, txId);
     recalculateHoldingForSecurity(aId, security_code);
     res.json(db.prepare('SELECT * FROM securities_transactions WHERE id=?').get(txId));
   }

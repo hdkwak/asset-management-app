@@ -264,12 +264,21 @@ export function TransactionTable({
         <SortHeader label="금액" col="amount" sortBy={sortBy} sortOrder={sortOrder} onSort={onSortChange} />
       ),
       meta: { align: 'right' },
-      cell: ({ getValue }) => {
-        const v = getValue() as number;
+      cell: ({ row }) => {
+        const tx = row.original as SecuritiesTransaction;
+        const v = tx.amount;
+        const fa = tx.foreign_amount;
         return (
-          <span className="font-medium tabular-nums text-gray-800">
-            {v >= 0 ? '+' : ''}{v.toLocaleString('ko-KR')}
-          </span>
+          <div className="text-right">
+            <span className="font-medium tabular-nums text-gray-800">
+              {v !== 0 ? `${v >= 0 ? '+' : ''}${v.toLocaleString('ko-KR')}` : '-'}
+            </span>
+            {fa !== 0 && (
+              <div className="text-xs text-blue-500 tabular-nums font-mono">
+                {fa >= 0 ? '+' : ''}${Math.abs(fa).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+              </div>
+            )}
+          </div>
         );
       },
     },

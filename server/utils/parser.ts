@@ -27,12 +27,13 @@ export interface SecuritiesColumnMap {
   security?: string;
   security_code?: string;
   description?: string;
-  amount?: string;       // signed amount column
-  amount_in?: string;    // income/credit column (separate mode)
-  amount_out?: string;   // expense/debit column (separate mode)
+  amount?: string;          // signed amount column (KRW)
+  amount_in?: string;       // income/credit column (separate mode, KRW)
+  amount_out?: string;      // expense/debit column (separate mode, KRW)
   balance?: string;
-  quantity?: string;    // 수량 (거래수량, 체결수량 등)
-  unit_price?: string;  // 단가 (체결단가, 매매단가 등)
+  quantity?: string;        // 수량 (거래수량, 체결수량 등)
+  unit_price?: string;      // 단가 (체결단가, 매매단가 등)
+  foreign_amount?: string;  // 외화 거래금액 (USD 등)
 }
 
 export interface MappedBankRow {
@@ -53,6 +54,8 @@ export interface MappedSecuritiesRow {
   balance: number;
   quantity: number;
   unit_price: number;
+  foreign_amount: number;
+  foreign_currency: string;  // 'USD' or ''
 }
 
 // ── File parsing ─────────────────────────────────────────────────────────────
@@ -271,16 +274,22 @@ export function applySecuritiesColumnMap(
         amount = normalizeAmount(row[map.amount ?? ''] ?? '');
       }
 
+      const foreignAmount = map.foreign_amount
+        ? normalizeAmount(row[map.foreign_amount] ?? '')
+        : 0;
+
       return {
-        date:          normalizeDate(row[map.date] ?? ''),
-        type:          (row[map.type ?? ''] ?? '기타').trim() || '기타',
+        date:             normalizeDate(row[map.date] ?? ''),
+        type:             (row[map.type ?? ''] ?? '기타').trim() || '기타',
         security,
-        security_code: securityCode,
-        description:   (row[map.description ?? ''] ?? '').trim(),
+        security_code:    securityCode,
+        description:      (row[map.description ?? ''] ?? '').trim(),
         amount,
-        balance:       normalizeAmount(row[map.balance ?? ''] ?? ''),
-        quantity:      normalizeAmount(row[map.quantity ?? ''] ?? ''),
-        unit_price:    normalizeAmount(row[map.unit_price ?? ''] ?? ''),
+        balance:          normalizeAmount(row[map.balance ?? ''] ?? ''),
+        quantity:         normalizeAmount(row[map.quantity ?? ''] ?? ''),
+        unit_price:       normalizeAmount(row[map.unit_price ?? ''] ?? ''),
+        foreign_amount:   foreignAmount,
+        foreign_currency: foreignAmount !== 0 ? 'USD' : '',
       };
     })
     .filter((r) => r.date !== '');

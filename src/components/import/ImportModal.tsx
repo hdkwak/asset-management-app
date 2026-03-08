@@ -17,17 +17,18 @@ const BANK_FIELDS: { key: string; label: string; required: boolean }[] = [
 ];
 
 const SECURITIES_FIELDS: { key: string; label: string; required: boolean }[] = [
-  { key: 'date',          label: '날짜',              required: true },
-  { key: 'amount_in',     label: '입금/입고 금액',    required: false },
-  { key: 'amount_out',    label: '출금/출고 금액',    required: false },
-  { key: 'amount',        label: '거래 금액 (±부호)', required: false },
-  { key: 'balance',       label: '잔고',              required: false },
-  { key: 'type',          label: '거래 유형',         required: false },
-  { key: 'security',      label: '종목명',            required: false },
-  { key: 'security_code', label: '종목코드',          required: false },
-  { key: 'quantity',      label: '수량',              required: false },
-  { key: 'unit_price',    label: '단가',              required: false },
-  { key: 'description',   label: '거래 내용',         required: false },
+  { key: 'date',           label: '날짜',                required: true },
+  { key: 'amount_in',      label: '입금/입고 금액 (KRW)', required: false },
+  { key: 'amount_out',     label: '출금/출고 금액 (KRW)', required: false },
+  { key: 'amount',         label: '거래 금액 (±부호)',    required: false },
+  { key: 'foreign_amount', label: '외화 거래금액 (USD)',  required: false },
+  { key: 'balance',        label: '잔고',                required: false },
+  { key: 'type',           label: '거래 유형',            required: false },
+  { key: 'security',       label: '종목명',               required: false },
+  { key: 'security_code',  label: '종목코드',             required: false },
+  { key: 'quantity',       label: '수량',                 required: false },
+  { key: 'unit_price',     label: '단가',                 required: false },
+  { key: 'description',    label: '거래 내용',            required: false },
 ];
 
 type Step = 'setup' | 'sheets' | 'mapping' | 'preview' | 'done';
@@ -170,8 +171,8 @@ export function ImportModal({ accountId, accountType, institution, onClose, onIm
     if (!file) return;
     if (!columnMapping['date']) { setError('날짜 컬럼을 선택하세요.'); return; }
     if (accountType === 'securities') {
-      const hasAmount = columnMapping['amount'] || columnMapping['amount_in'] || columnMapping['amount_out'];
-      if (!hasAmount) { setError('거래 금액 컬럼을 선택하세요. (단일 금액 또는 입금/출금 분리 컬럼 중 하나를 매핑하세요.)'); return; }
+      const hasAmount = columnMapping['amount'] || columnMapping['amount_in'] || columnMapping['amount_out'] || columnMapping['foreign_amount'];
+      if (!hasAmount) { setError('거래 금액 컬럼을 선택하세요. (KRW 금액, 입금/출금 분리 컬럼, 또는 외화 금액 중 하나를 매핑하세요.)'); return; }
     }
 
     setLoading(true);

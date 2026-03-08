@@ -236,7 +236,12 @@ export function HoldingsTable({
         const h = row.original;
         return (
           <div>
-            <p className="font-medium text-gray-900 truncate max-w-[150px]" title={h.security_name}>{h.security_name}</p>
+            <div className="flex items-center gap-1.5">
+              <p className="font-medium text-gray-900 truncate max-w-[130px]" title={h.security_name}>{h.security_name}</p>
+              {h.currency === 'USD' && (
+                <span className="flex-shrink-0 text-[10px] font-semibold bg-blue-100 text-blue-600 px-1 py-0.5 rounded">USD</span>
+              )}
+            </div>
             <div className="flex items-center gap-2 mt-0.5">
               <TickerCell holding={h} onSetTicker={onSetTicker} />
               <span className="text-xs text-gray-300">·</span>
@@ -265,16 +270,33 @@ export function HoldingsTable({
     {
       id: 'avg_buy_price',
       accessorKey: 'avg_buy_price',
-      size: 100,
+      size: 110,
       header: () => (
         <SortHeader label="평균단가" col="avg_buy_price" sortBy={sortBy} sortOrder={sortOrder} onSort={onSortChange} />
       ),
       meta: { align: 'right' },
-      cell: ({ getValue }) => (
-        <span className="tabular-nums text-sm text-gray-700">
-          {fmtKRW(getValue() as number)}
-        </span>
-      ),
+      cell: ({ row }) => {
+        const h = row.original;
+        const isUsd = h.currency === 'USD';
+        return (
+          <div className="text-right">
+            {isUsd && h.avg_buy_price_usd > 0 ? (
+              <>
+                <span className="tabular-nums text-sm text-gray-700">
+                  ${h.avg_buy_price_usd.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                </span>
+                {h.avg_buy_price > 0 && (
+                  <div className="text-xs text-gray-400 tabular-nums">{fmtKRW(h.avg_buy_price)}</div>
+                )}
+              </>
+            ) : (
+              <span className="tabular-nums text-sm text-gray-700">
+                {fmtKRW(h.avg_buy_price)}
+              </span>
+            )}
+          </div>
+        );
+      },
     },
     {
       id: 'current_price',

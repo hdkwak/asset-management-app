@@ -329,6 +329,12 @@ function initSchema(database: DatabaseSync): void {
       { date: '거래일자', type: '거래구분', security: '종목명', security_code: '종목코드',
         quantity: '수량', unit_price: '단가', description: '거래내용', amount: '거래금액', balance: '잔고' },
       'signed');
+    // KB증권 XLSX: 입금/입고/매도 + 출금/출고/매수 분리 컬럼 형식
+    upsert('KB증권', 'securities', 'utf-8',
+      { date: '거래일', type: '내용', security: '종목명',
+        quantity: '수량', unit_price: '단가',
+        amount_in: '입금/입고/매도', amount_out: '출금/출고/매수', balance: '예수금잔액(원)' },
+      'separate', 0, 'xlsx');
 
     database.exec('COMMIT');
   } catch (e) {

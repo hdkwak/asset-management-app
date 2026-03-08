@@ -27,7 +27,9 @@ export interface SecuritiesColumnMap {
   security?: string;
   security_code?: string;
   description?: string;
-  amount: string;
+  amount?: string;       // signed amount column
+  amount_in?: string;    // income/credit column (separate mode)
+  amount_out?: string;   // expense/debit column (separate mode)
   balance?: string;
   quantity?: string;    // 수량 (거래수량, 체결수량 등)
   unit_price?: string;  // 단가 (체결단가, 매매단가 등)
@@ -256,13 +258,26 @@ export function applySecuritiesColumnMap(
       const rawCode  = map.security_code ? (row[map.security_code] ?? '').trim() : '';
       // security_code 컬럼이 없으면 종목명을 그룹핑 키로 사용
       const securityCode = rawCode || security;
+
+      // 입금/출금 분리 컬럼 또는 단일 부호 컬럼 지원
+      let amount: number;
+      if (map.amount_in || map.amount_out) {
+        const income  = normalizeAmount(row[map.amount_in  ?? ''] ?? '');
+        const expense = normalizeAmount(row[map.amount_out ?? ''] ?? '');
+        if (income > 0) amount = income;
+        else if (expense > 0) amount = -expense;
+        else amount = 0;
+      } else {
+        amount = normalizeAmount(row[map.amount ?? ''] ?? '');
+      }
+
       return {
         date:          normalizeDate(row[map.date] ?? ''),
         type:          (row[map.type ?? ''] ?? '기타').trim() || '기타',
         security,
         security_code: securityCode,
         description:   (row[map.description ?? ''] ?? '').trim(),
-        amount:        normalizeAmount(row[map.amount] ?? ''),
+        amount,
         balance:       normalizeAmount(row[map.balance ?? ''] ?? ''),
         quantity:      normalizeAmount(row[map.quantity ?? ''] ?? ''),
         unit_price:    normalizeAmount(row[map.unit_price ?? ''] ?? ''),

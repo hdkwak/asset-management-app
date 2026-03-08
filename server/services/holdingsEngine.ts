@@ -1,7 +1,7 @@
 import { getDb } from '../db';
 import { calcMovingAvgPrice, calcRealizedPnl } from '../utils/financeCalc';
 
-// 매수로 처리할 거래 유형 (증권사별 명칭 포함)
+// 매수로 처리할 거래 유형 (증권사별 명칭 포함 — 명시적 목록)
 const BUY_TYPES = new Set([
   '매수',
   '주식매수입고', '주식매수', '매수입고',
@@ -9,7 +9,7 @@ const BUY_TYPES = new Set([
   '대체입고', '계좌대체입고', '타사대체입고',  // 타 계좌/증권사 이전 입고
   'buy', 'BUY',
 ]);
-// 매도로 처리할 거래 유형 (증권사별 명칭 포함)
+// 매도로 처리할 거래 유형 (증권사별 명칭 포함 — 명시적 목록)
 const SELL_TYPES = new Set([
   '매도',
   '주식매도출고', '주식매도', '매도출고',
@@ -17,6 +17,32 @@ const SELL_TYPES = new Set([
   '대체출고', '계좌대체출고', '타사대체출고',  // 타 계좌/증권사 이전 출고
   'sell', 'SELL',
 ]);
+
+const CANCEL_KEYWORDS = ['취소', '정정', '오류', '실패'];
+
+/**
+ * 거래 유형이 매수(주식 취득)인지 판별.
+ * 명시적 목록 우선, 그 다음 패턴 매칭으로 폴백하여 증권사별 다양한 명칭에 대응.
+ * '매수' 또는 '입고'를 포함하고, 취소/정정/오류가 없으면 매수로 간주.
+ * '출금'·'입금'은 현금 이동으로 '입고'·'출고'와 구별됨.
+ */
+function isBuyTx(type: string): boolean {
+  if (BUY_TYPES.has(type)) return true;
+  const t = type.trim();
+  if (CANCEL_KEYWORDS.some((k) => t.includes(k))) return false;
+  return t.includes('매수') || t.includes('입고');
+}
+
+/**
+ * 거래 유형이 매도(주식 처분)인지 판별.
+ * '매도' 또는 '출고'를 포함하고, 취소/정정/오류가 없으면 매도로 간주.
+ */
+function isSellTx(type: string): boolean {
+  if (SELL_TYPES.has(type)) return true;
+  const t = type.trim();
+  if (CANCEL_KEYWORDS.some((k) => t.includes(k))) return false;
+  return t.includes('매도') || t.includes('출고');
+}
 
 interface TxRow {
   date: string;
@@ -54,7 +80,7 @@ const UPSERT_SQL = `
 function applyTransaction(h: HoldingState, tx: TxRow): void {
   if (tx.security) h.securityName = tx.security;
 
-  if (BUY_TYPES.has(tx.type)) {
+  if (isBuyTx(tx.type)) {
     const qty = tx.quantity;
     // 단가: unit_price 우선, 없으면 금액÷수량으로 추정
     const price =
@@ -72,7 +98,7 @@ function applyTransaction(h: HoldingState, tx: TxRow): void {
     const buyAmount = Math.abs(tx.amount) > 0 ? Math.abs(tx.amount) : qty * price;
     h.totalBuyAmount += buyAmount;
 
-  } else if (SELL_TYPES.has(tx.type)) {
+  } else if (isSellTx(tx.type)) {
     const qty = tx.quantity;
     const price =
       tx.unit_price > 0

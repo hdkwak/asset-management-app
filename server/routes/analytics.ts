@@ -148,6 +148,24 @@ router.get('/securities', (req: Request, res: Response) => {
   const isAll = !accountIdParam || accountIdParam === 'all';
   const accountId = isAll ? null : Number(accountIdParam);
 
+  // USD/KRW 환율
+  const rateRow = db
+    .prepare("SELECT value FROM app_settings WHERE key = 'usd_krw_rate'")
+    .get() as { value: string } | undefined;
+  const usdKrwRate = rateRow ? parseFloat(rateRow.value) || 1300 : 1300;
+
+  // 평가금액: USD = Stooq 시세(없으면 매입단가) × qty × 환율 / KRW = qty × 현재주가
+  const evalExpr = `CASE WHEN h.currency = 'USD'
+    THEN h.quantity * CASE WHEN COALESCE(pc.current_price, 0) > 0
+      THEN pc.current_price ELSE h.avg_buy_price_usd END * ${usdKrwRate}
+    ELSE h.quantity * COALESCE(pc.current_price, h.avg_buy_price)
+  END`;
+  // 매입원가: USD = total_buy_usd × 현재환율 / KRW = total_buy_amount
+  const costExpr = `CASE WHEN h.currency = 'USD'
+    THEN h.total_buy_usd * ${usdKrwRate}
+    ELSE h.total_buy_amount
+  END`;
+
   if (!isAll && (!accountId || isNaN(accountId))) {
     res.status(400).json({ error: 'account_id가 올바르지 않습니다.' });
     return;
@@ -167,11 +185,11 @@ router.get('/securities', (req: Request, res: Response) => {
   // ── Summary ────────────────────────────────────────────────────────────────
   const summaryRow = db.prepare(`
     SELECT
-      COALESCE(SUM(h.total_buy_amount), 0)                                              AS total_buy_amount,
-      COALESCE(SUM(h.quantity * COALESCE(pc.current_price, h.avg_buy_price)), 0)        AS total_eval_amount,
-      COALESCE(SUM(h.realized_pnl), 0)                                                  AS total_realized_pnl,
-      COUNT(CASE WHEN h.quantity > 0 THEN 1 END)                                        AS holding_count,
-      COUNT(DISTINCT h.account_id)                                                      AS account_count
+      COALESCE(SUM(${costExpr}), 0)                    AS total_buy_amount,
+      COALESCE(SUM(${evalExpr}), 0)                    AS total_eval_amount,
+      COALESCE(SUM(CASE WHEN h.currency='USD' THEN h.realized_pnl_usd*${usdKrwRate} ELSE h.realized_pnl END), 0) AS total_realized_pnl,
+      COUNT(CASE WHEN h.quantity > 0 THEN 1 END)       AS holding_count,
+      COUNT(DISTINCT h.account_id)                     AS account_count
     FROM holdings h
     LEFT JOIN price_cache pc ON pc.security_code = COALESCE(NULLIF(h.ticker_code,''), h.security_code)
     ${holdingFilter}
@@ -208,13 +226,10 @@ router.get('/securities', (req: Request, res: Response) => {
     SELECT
       h.security_name,
       MIN(h.security_code)                                                       AS security_code,
-      SUM(h.total_buy_amount)                                                    AS total_buy_amount,
-      SUM(h.quantity * COALESCE(pc.current_price, h.avg_buy_price))              AS eval_amount,
-      SUM(h.realized_pnl)                                                        AS realized_pnl,
+      SUM(${costExpr})                                                           AS total_buy_amount,
+      SUM(${evalExpr})                                                           AS eval_amount,
+      SUM(CASE WHEN h.currency='USD' THEN h.realized_pnl_usd*${usdKrwRate} ELSE h.realized_pnl END) AS realized_pnl,
       SUM(h.quantity)                                                            AS quantity,
-      CASE WHEN SUM(h.quantity) > 0
-           THEN SUM(h.total_buy_amount) / SUM(h.quantity)
-           ELSE 0 END                                                            AS avg_buy_price,
       MAX(COALESCE(pc.current_price, h.avg_buy_price))                           AS current_price
     FROM holdings h
     LEFT JOIN price_cache pc ON pc.security_code = COALESCE(NULLIF(h.ticker_code,''), h.security_code)
@@ -232,17 +247,20 @@ router.get('/securities', (req: Request, res: Response) => {
     quantity: number;
   }[];
 
-  const bySecurity = bySecurityRows.map((r) => ({
-    ...r,
-    account_name: '',
-    account_color: '',
-    ratio: totalEval > 0 ? Math.round((r.eval_amount / totalEval) * 1000) / 10 : 0,
-    unrealized_pnl: r.total_buy_amount > 0 ? r.eval_amount - r.total_buy_amount : 0,
-    unrealized_pnl_rate:
-      r.total_buy_amount > 0
-        ? Math.round(((r.eval_amount - r.total_buy_amount) / r.total_buy_amount) * 10000) / 100
+  const bySecurity = bySecurityRows.map((r) => {
+    const unrealizedPnl = r.total_buy_amount > 0 ? r.eval_amount - r.total_buy_amount : 0;
+    return {
+      ...r,
+      avg_buy_price: 0,
+      account_name: '',
+      account_color: '',
+      ratio: totalEval > 0 ? Math.round((r.eval_amount / totalEval) * 1000) / 10 : 0,
+      unrealized_pnl: unrealizedPnl,
+      unrealized_pnl_rate: r.total_buy_amount > 0
+        ? Math.round((unrealizedPnl / r.total_buy_amount) * 10000) / 100
         : 0,
-  }));
+    };
+  });
 
   // ── By Account ────────────────────────────────────────────────────────────
   const byAccountRows = db.prepare(`
@@ -250,7 +268,7 @@ router.get('/securities', (req: Request, res: Response) => {
       h.account_id,
       a.name  AS account_name,
       a.color AS account_color,
-      COALESCE(SUM(h.quantity * COALESCE(pc.current_price, h.avg_buy_price)), 0) AS eval_amount
+      COALESCE(SUM(${evalExpr}), 0) AS eval_amount
     FROM holdings h
     JOIN accounts a ON a.id = h.account_id
     LEFT JOIN price_cache pc ON pc.security_code = COALESCE(NULLIF(h.ticker_code,''), h.security_code)
@@ -274,9 +292,9 @@ router.get('/securities', (req: Request, res: Response) => {
     SELECT
       h.security_name,
       MIN(h.security_code) AS security_code,
-      SUM(h.total_buy_amount) AS total_buy_amount,
-      SUM(h.quantity * COALESCE(pc.current_price, h.avg_buy_price)) AS eval_amount,
-      SUM(h.realized_pnl) AS realized_pnl
+      SUM(${costExpr}) AS total_buy_amount,
+      SUM(${evalExpr}) AS eval_amount,
+      SUM(CASE WHEN h.currency='USD' THEN h.realized_pnl_usd*${usdKrwRate} ELSE h.realized_pnl END) AS realized_pnl
     FROM holdings h
     LEFT JOIN price_cache pc ON pc.security_code = COALESCE(NULLIF(h.ticker_code,''), h.security_code)
     ${holdingQtyFilter}
@@ -291,8 +309,7 @@ router.get('/securities', (req: Request, res: Response) => {
 
   const pnlWithCalc = pnlRawRows.map((r) => {
     const unrealizedPnl = r.total_buy_amount > 0 ? r.eval_amount - r.total_buy_amount : 0;
-    const unrealizedPnlRate =
-      r.total_buy_amount > 0
+    const unrealizedPnlRate = r.total_buy_amount > 0
         ? Math.round((unrealizedPnl / r.total_buy_amount) * 10000) / 100
         : 0;
     return { ...r, unrealized_pnl: unrealizedPnl, unrealized_pnl_rate: unrealizedPnlRate };

@@ -14,7 +14,7 @@ import holdingsRouter from './routes/holdings';
 import pricesRouter from './routes/prices';
 import stocksRouter from './routes/stocks';
 import { recalculateHoldings } from './services/holdingsEngine';
-import { startScheduler } from './services/priceScheduler';
+import { startScheduler, refreshFxRate } from './services/priceScheduler';
 
 const app = express();
 const PORT = 3001;
@@ -55,6 +55,9 @@ app.use('/api/stocks', stocksRouter);
 
 // Start price auto-refresh scheduler
 startScheduler();
+
+// Fetch USD/KRW exchange rate at startup (regardless of market hours)
+refreshFxRate().catch(() => {/* silent - fallback used */});
 
 app.listen(PORT, () => {
   console.log(`🚀 API 서버가 포트 ${PORT}에서 실행 중입니다`);

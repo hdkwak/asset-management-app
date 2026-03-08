@@ -94,6 +94,17 @@ export function getActiveHoldingCodes(): string[] {
   return rows.map((r) => r.code);
 }
 
+/** 알파벳으로 시작하는 티커는 해외주식(Yahoo Finance), 그 외는 국내주식(Naver) */
+export function splitDomesticForeign(codes: string[]): { domestic: string[]; foreign: string[] } {
+  const domestic: string[] = [];
+  const foreign: string[] = [];
+  for (const c of codes) {
+    if (/^[A-Za-z]/.test(c.trim())) foreign.push(c);
+    else domestic.push(c);
+  }
+  return { domestic, foreign };
+}
+
 export function getCacheStatus(): {
   total_cached: number;
   stale_count: number;

@@ -16,6 +16,23 @@ router.get('/', (_req, res) => {
 
   const db = getDb();
 
+  // USD/KRW 환율
+  const rateRow = db
+    .prepare("SELECT value FROM app_settings WHERE key = 'usd_krw_rate'")
+    .get() as { value: string } | undefined;
+  const usdKrwRate = rateRow ? parseFloat(rateRow.value) || 1300 : 1300;
+
+  const evalExpr = `CASE WHEN h.currency = 'USD'
+    THEN h.quantity * CASE WHEN COALESCE(pc.current_price, 0) > 0
+      THEN pc.current_price ELSE h.avg_buy_price_usd END * ${usdKrwRate}
+    ELSE h.quantity * COALESCE(pc.current_price, h.avg_buy_price)
+  END`;
+
+  const costExpr = `CASE WHEN h.currency = 'USD'
+    THEN h.total_buy_usd * ${usdKrwRate}
+    ELSE h.total_buy_amount
+  END`;
+
   const bankRow = db
     .prepare(`SELECT COALESCE(SUM(balance), 0) as total FROM accounts WHERE type = 'bank'`)
     .get() as { total: number };
@@ -32,9 +49,9 @@ router.get('/', (_req, res) => {
     .prepare(`SELECT COUNT(*) as cnt FROM accounts WHERE type = 'securities'`)
     .get() as { cnt: number };
 
-  // Real securities evaluation from holdings × price_cache
+  // Real securities evaluation from holdings × price_cache (USD holdings use exchange rate)
   const secEvalRow = db.prepare(`
-    SELECT COALESCE(SUM(h.quantity * COALESCE(pc.current_price, h.avg_buy_price)), 0) AS eval
+    SELECT COALESCE(SUM(${evalExpr}), 0) AS eval
     FROM holdings h
     LEFT JOIN price_cache pc ON pc.security_code = COALESCE(NULLIF(h.ticker_code,''), h.security_code)
     WHERE h.quantity > 0
@@ -44,13 +61,13 @@ router.get('/', (_req, res) => {
   type RawHolding = { security_name: string; eval_amount: number; total_buy_amount: number };
   const rawRows = db.prepare(`
     SELECT h.security_name,
-      SUM(h.quantity * COALESCE(pc.current_price, h.avg_buy_price)) AS eval_amount,
-      SUM(h.total_buy_amount) AS total_buy_amount
+      SUM(${evalExpr}) AS eval_amount,
+      SUM(${costExpr}) AS total_buy_amount
     FROM holdings h
     LEFT JOIN price_cache pc ON pc.security_code = COALESCE(NULLIF(h.ticker_code,''), h.security_code)
     WHERE h.quantity > 0
     GROUP BY h.security_name
-    ORDER BY ABS((SUM(h.quantity * COALESCE(pc.current_price, h.avg_buy_price)) - SUM(h.total_buy_amount)) / NULLIF(SUM(h.total_buy_amount), 0)) DESC
+    ORDER BY ABS((SUM(${evalExpr}) - SUM(${costExpr})) / NULLIF(SUM(${costExpr}), 0)) DESC
     LIMIT 5
   `).all() as RawHolding[];
 

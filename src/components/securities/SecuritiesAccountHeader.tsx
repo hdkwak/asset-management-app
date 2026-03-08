@@ -85,6 +85,11 @@ export function SecuritiesAccountHeader({ summary, loading, refreshing, onRefres
 
         {/* Price update status + refresh */}
         <div className="flex-shrink-0 text-right">
+          {s?.usd_krw_rate && (
+            <p className="text-xs text-blue-500 mb-1">
+              USD/KRW: {s.usd_krw_rate.toLocaleString('ko-KR', { maximumFractionDigits: 2 })}
+            </p>
+          )}
           <p className="text-xs text-gray-400 mb-1">
             시세 업데이트: {fmtTime(s?.last_price_update ?? null)}
           </p>

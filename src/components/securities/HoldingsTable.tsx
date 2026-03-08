@@ -41,7 +41,9 @@ function fmtTime(iso: string | null): string {
 }
 
 // ── TickerCell ────────────────────────────────────────────────────────────────
-// Inline ticker code input: user directly types the 6-digit Naver ticker code.
+// Inline ticker code input.
+// KRW 종목: 6자리 숫자 (네이버 코드)
+// USD 종목: 알파벳 티커 (예: AAPL, NVDA) — 네이버 해외주식 검색 지원
 
 interface TickerCellProps {
   holding: Holding;
@@ -50,7 +52,12 @@ interface TickerCellProps {
 
 function TickerCell({ holding, onSetTicker }: TickerCellProps) {
   const ticker = holding.ticker_code?.trim() ?? '';
-  const hasValidTicker = /^\d{6}$/.test(ticker);
+  const isUsd = holding.currency === 'USD';
+  // KRW: 6자리 숫자, USD: 1~10자 알파벳/점/하이픈(BRK.B 등 포함)
+  const hasValidTicker = isUsd
+    ? /^[A-Za-z][A-Za-z0-9.\-]{0,9}$/.test(ticker)
+    : /^\d{6}$/.test(ticker);
+
   const [editing, setEditing] = useState(false);
   const [input, setInput] = useState('');
   const [saving, setSaving] = useState(false);
@@ -76,10 +83,17 @@ function TickerCell({ holding, onSetTicker }: TickerCellProps) {
   };
 
   const handleSave = async () => {
-    const code = input.trim();
-    if (!/^\d{6}$/.test(code)) {
-      setError('6자리 숫자 코드를 입력하세요');
-      return;
+    const code = input.trim().toUpperCase();
+    if (isUsd) {
+      if (!/^[A-Z][A-Z0-9.\-]{0,9}$/.test(code)) {
+        setError('알파벳 티커를 입력하세요 (예: AAPL)');
+        return;
+      }
+    } else {
+      if (!/^\d{6}$/.test(code)) {
+        setError('6자리 숫자 코드를 입력하세요');
+        return;
+      }
     }
     setSaving(true);
     setError('');
@@ -98,6 +112,16 @@ function TickerCell({ holding, onSetTicker }: TickerCellProps) {
     if (e.key === 'Escape') setEditing(false);
   };
 
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (isUsd) {
+      // 알파벳, 숫자, 점, 하이픈만 허용 (최대 10자)
+      setInput(e.target.value.replace(/[^A-Za-z0-9.\-]/g, '').slice(0, 10));
+    } else {
+      // 숫자만, 최대 6자리
+      setInput(e.target.value.replace(/\D/g, '').slice(0, 6));
+    }
+  };
+
   if (!editing) {
     return hasValidTicker ? (
       <button
@@ -110,7 +134,7 @@ function TickerCell({ holding, onSetTicker }: TickerCellProps) {
     ) : (
       <button
         onClick={handleOpen}
-        title="시세 조회용 6자리 종목코드 입력"
+        title={isUsd ? '미국 주식 티커 입력 (예: AAPL)' : '시세 조회용 6자리 종목코드 입력'}
         className="flex items-center gap-0.5 text-xs text-orange-500 hover:text-orange-700"
       >
         <AlertCircle size={11} />
@@ -125,10 +149,10 @@ function TickerCell({ holding, onSetTicker }: TickerCellProps) {
         <input
           ref={inputRef}
           value={input}
-          onChange={(e) => setInput(e.target.value.replace(/\D/g, '').slice(0, 6))}
+          onChange={handleChange}
           onKeyDown={handleKeyDown}
-          placeholder="000000"
-          maxLength={6}
+          placeholder={isUsd ? 'AAPL' : '000000'}
+          maxLength={isUsd ? 10 : 6}
           className="w-20 text-xs border border-blue-400 rounded px-1.5 py-0.5 font-mono focus:outline-none focus:ring-1 focus:ring-blue-500"
         />
         <button
@@ -309,6 +333,33 @@ export function HoldingsTable({
       cell: ({ row }) => {
         const h = row.original;
         const c = h.change_amount;
+        const isUsd = h.currency === 'USD';
+
+        if (isUsd) {
+          // Yahoo Finance 시세(USD)가 있으면 달러 가격 표시
+          if (h.current_price > 0) {
+            return (
+              <div className="text-right">
+                <p className={`tabular-nums text-sm font-medium ${pnlColor(c)}`}>
+                  ${h.current_price.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                </p>
+                {c !== 0 && (
+                  <p className={`text-xs tabular-nums ${pnlColor(c)}`}>
+                    {pnlSign(c)}${Math.abs(c).toFixed(2)} ({fmtRate(h.change_rate)})
+                  </p>
+                )}
+              </div>
+            );
+          }
+          // 시세 없음 → 매입단가 기준 추정 표시
+          return (
+            <div className="text-right">
+              <span className="text-xs text-gray-400 italic">시세 미조회</span>
+              <div className="text-xs text-gray-300">코드 입력 필요</div>
+            </div>
+          );
+        }
+
         return (
           <div className="text-right">
             <p className={`tabular-nums text-sm font-medium ${pnlColor(c)}`}>
@@ -326,16 +377,31 @@ export function HoldingsTable({
     {
       id: 'eval_amount',
       accessorKey: 'eval_amount',
-      size: 110,
+      size: 120,
       header: () => (
         <SortHeader label="평가금액" col="eval_amount" sortBy={sortBy} sortOrder={sortOrder} onSort={onSortChange} />
       ),
       meta: { align: 'right' },
-      cell: ({ getValue }) => (
-        <span className="tabular-nums text-sm text-gray-700">
-          {fmtKRW(getValue() as number)}
-        </span>
-      ),
+      cell: ({ row }) => {
+        const h = row.original;
+        const isUsd = h.currency === 'USD';
+        // USD 현재가 기반 달러 평가금액
+        const usdEval = isUsd
+          ? (h.current_price > 0 ? h.current_price : h.avg_buy_price_usd) * h.quantity
+          : 0;
+        return (
+          <div className="text-right">
+            <span className="tabular-nums text-sm text-gray-700">
+              {fmtKRW(h.eval_amount)}
+            </span>
+            {isUsd && usdEval > 0 && (
+              <div className="text-xs text-blue-400 tabular-nums">
+                ${usdEval.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+              </div>
+            )}
+          </div>
+        );
+      },
     },
     {
       id: 'unrealized_pnl',

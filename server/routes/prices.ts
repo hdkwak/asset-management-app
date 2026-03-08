@@ -1,5 +1,6 @@
 import { Router, Request, Response } from 'express';
 import { fetchStockPrice, fetchStockPrices } from '../services/naverFinance';
+import { fetchStooqStockPrice, fetchStooqStockPrices } from '../services/stooqFinance';
 import {
   updateCache,
   getCache,
@@ -7,7 +8,12 @@ import {
   getActiveHoldingCodes,
   isMarketOpen,
   getCacheStatus,
+  splitDomesticForeign,
 } from '../services/priceCache';
+
+function isForeignTicker(code: string): boolean {
+  return /^[A-Za-z]/.test(code.trim());
+}
 
 const router = Router();
 
@@ -35,7 +41,12 @@ router.get('/', async (req: Request, res: Response) => {
 
   if (missing.length > 0) {
     try {
-      const fetched = await fetchStockPrices(missing);
+      const { domestic, foreign } = splitDomesticForeign(missing);
+      const [dp, fp] = await Promise.all([
+        domestic.length > 0 ? fetchStockPrices(domestic) : Promise.resolve([]),
+        foreign.length > 0 ? fetchStooqStockPrices(foreign) : Promise.resolve([]),
+      ]);
+      const fetched = [...dp, ...fp];
       if (fetched.length > 0) {
         updateCache(fetched);
         cached = [...cached, ...getCache(missing)];
@@ -69,7 +80,12 @@ router.post('/refresh', async (req: Request, res: Response) => {
     return;
   }
   try {
-    const prices = await fetchStockPrices(codes);
+    const { domestic, foreign } = splitDomesticForeign(codes);
+    const [dp, fp] = await Promise.all([
+      domestic.length > 0 ? fetchStockPrices(domestic) : Promise.resolve([]),
+      foreign.length > 0 ? fetchYahooStockPrices(foreign) : Promise.resolve([]),
+    ]);
+    const prices = [...dp, ...fp];
     if (prices.length > 0) updateCache(prices);
     res.json({ refreshed: prices.length, total: codes.length });
   } catch (err) {
@@ -81,7 +97,9 @@ router.post('/refresh', async (req: Request, res: Response) => {
 router.post('/refresh/:code', async (req: Request, res: Response) => {
   const { code } = req.params;
   try {
-    const price = await fetchStockPrice(code);
+    const price = isForeignTicker(code)
+      ? await fetchStooqStockPrice(code)
+      : await fetchStockPrice(code);
     if (price) {
       updateCache([price]);
       res.json({ refreshed: 1, price });

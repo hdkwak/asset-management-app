@@ -41,29 +41,53 @@ router.get('/', (req: Request, res: Response) => {
       .all(Number(accountIdParam)) as Record<string, unknown>[];
   }
 
+  // USD/KRW 환율 (app_settings에서 조회, 없으면 기본값 1300)
+  const rateRow = db
+    .prepare("SELECT value FROM app_settings WHERE key = 'usd_krw_rate'")
+    .get() as { value: string } | undefined;
+  const usdKrwRate = rateRow ? parseFloat(rateRow.value) || 1300 : 1300;
+
   // 계산 필드 추가
   const holdings = rows.map((h) => {
-    const qty            = Number(h.quantity);
-    const currentPrice   = Number(h.current_price);
-    const totalBuyAmount = Number(h.total_buy_amount);
-    const realizedPnl    = Number(h.realized_pnl);
-    const evalAmount     = qty * currentPrice;
-    const unrealizedPnl  = totalBuyAmount > 0 ? evalAmount - totalBuyAmount : 0;
+    const qty             = Number(h.quantity);
+    const currentPrice    = Number(h.current_price);
+    const totalBuyAmount  = Number(h.total_buy_amount);
+    const totalBuyUsd     = Number(h.total_buy_usd);
+    const avgBuyPriceUsd  = Number(h.avg_buy_price_usd);
+    const realizedPnlUsd  = Number((h as Record<string, unknown>).realized_pnl_usd ?? 0);
+    const realizedPnl     = Number(h.realized_pnl);
+    const isUsd           = String(h.currency) === 'USD';
+
+    // 평가금액 (KRW): USD 종목은 Stooq 시세 × qty × 환율, 없으면 매입단가 기준
+    const usdPrice       = currentPrice > 0 ? currentPrice : avgBuyPriceUsd;
+    const evalAmount     = isUsd
+      ? qty * usdPrice * usdKrwRate
+      : qty * currentPrice;
+
+    // 매입원가 (KRW): USD 종목은 total_buy_usd × 현재환율로 환산
+    // (KRW 종목은 total_buy_amount 직접 사용)
+    const costBasisKrw   = isUsd ? totalBuyUsd * usdKrwRate : totalBuyAmount;
+
+    // 미실현 손익
+    const unrealizedPnl  = costBasisKrw > 0 ? evalAmount - costBasisKrw : 0;
+
+    // 실현 손익: USD 종목은 realized_pnl_usd를 KRW로 환산
+    const effectiveRealizedPnl = isUsd ? realizedPnlUsd * usdKrwRate : realizedPnl;
 
     return {
       ...h,
       eval_amount:           evalAmount,
       unrealized_pnl:        unrealizedPnl,
-      unrealized_pnl_rate:   calcPnlRate(unrealizedPnl, totalBuyAmount),
-      total_pnl:             unrealizedPnl + realizedPnl,
-      // 요약 계산용 앨리어스 (타입 명확화)
-      _total_buy_amount:     totalBuyAmount,
-      _realized_pnl:         realizedPnl,
+      unrealized_pnl_rate:   calcPnlRate(unrealizedPnl, costBasisKrw),
+      total_pnl:             unrealizedPnl + effectiveRealizedPnl,
+      // 요약 계산용 (KRW 환산 기준)
+      _cost_basis_krw:       costBasisKrw,
+      _realized_pnl:         effectiveRealizedPnl,
     };
   });
 
-  // 요약 (전체 보유 종목 기준)
-  const totalBuyAmount    = holdings.reduce((s, h) => s + h._total_buy_amount, 0);
+  // 요약 (전체 보유 종목 기준, KRW 환산 기준)
+  const totalBuyAmount    = holdings.reduce((s, h) => s + h._cost_basis_krw, 0);
   const totalEvalAmount   = holdings.reduce((s, h) => s + h.eval_amount, 0);
   const totalUnrealized   = totalBuyAmount > 0 ? totalEvalAmount - totalBuyAmount : 0;
   const totalRealizedPnl  = holdings.reduce((s, h) => s + h._realized_pnl, 0);
@@ -109,6 +133,7 @@ router.get('/', (req: Request, res: Response) => {
       total_realized_pnl:        totalRealizedPnl,
       total_pnl:                 totalUnrealized + totalRealizedPnl,
       last_price_update:         lastPriceUpdate,
+      usd_krw_rate:              usdKrwRate,
     },
   });
 });

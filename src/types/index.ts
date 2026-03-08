@@ -420,6 +420,7 @@ export interface HoldingsSummary {
   total_realized_pnl: number;
   total_pnl: number;
   last_price_update: string | null;
+  usd_krw_rate?: number;
 }
 
 export interface HoldingsResponse {

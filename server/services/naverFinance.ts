@@ -174,6 +174,26 @@ export async function fetchStockPrices(codes: string[]): Promise<StockPrice[]> {
 }
 
 /**
+ * Fetch current USD/KRW exchange rate from Naver Finance mobile API.
+ * Returns null if the request fails.
+ */
+export async function fetchUsdKrwRate(): Promise<number | null> {
+  try {
+    const url = 'https://m.stock.naver.com/api/index/FX_USDKRW/basic';
+    const { data } = await axios.get<unknown>(url, { headers: HEADERS, timeout: 5000 });
+    if (!data || typeof data !== 'object') return null;
+    const d = data as Record<string, unknown>;
+    const domain = d.stockItemDomain as Record<string, unknown> | undefined;
+    if (!domain) return null;
+    const priceStr = String(domain.closePrice ?? '').replace(/[^0-9.]/g, '');
+    const rate = parseFloat(priceStr);
+    return rate > 100 ? rate : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
  * Search stocks by name or code using Naver Finance autocomplete API.
  * Returns up to 10 results.
  */

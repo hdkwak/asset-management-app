@@ -19,28 +19,31 @@ const SELL_TYPES = new Set([
 ]);
 
 const CANCEL_KEYWORDS = ['취소', '정정', '오류', '실패'];
+// 채권·펀드 등 주식이 아닌 유형 — 이 키워드가 포함된 거래는 매수/매도로 처리하지 않음
+const NON_STOCK_KEYWORDS = ['채권', '펀드환매', '펀드매입'];
 
 /**
  * 거래 유형이 매수(주식 취득)인지 판별.
  * 명시적 목록 우선, 그 다음 패턴 매칭으로 폴백하여 증권사별 다양한 명칭에 대응.
- * '매수' 또는 '입고'를 포함하고, 취소/정정/오류가 없으면 매수로 간주.
- * '출금'·'입금'은 현금 이동으로 '입고'·'출고'와 구별됨.
+ * '채권' 등 비주식 유형은 제외.
  */
 function isBuyTx(type: string): boolean {
   if (BUY_TYPES.has(type)) return true;
   const t = type.trim();
   if (CANCEL_KEYWORDS.some((k) => t.includes(k))) return false;
+  if (NON_STOCK_KEYWORDS.some((k) => t.includes(k))) return false;
   return t.includes('매수') || t.includes('입고');
 }
 
 /**
  * 거래 유형이 매도(주식 처분)인지 판별.
- * '매도' 또는 '출고'를 포함하고, 취소/정정/오류가 없으면 매도로 간주.
+ * '채권' 등 비주식 유형은 제외.
  */
 function isSellTx(type: string): boolean {
   if (SELL_TYPES.has(type)) return true;
   const t = type.trim();
   if (CANCEL_KEYWORDS.some((k) => t.includes(k))) return false;
+  if (NON_STOCK_KEYWORDS.some((k) => t.includes(k))) return false;
   return t.includes('매도') || t.includes('출고');
 }
 
@@ -95,25 +98,28 @@ function applyTransaction(h: HoldingState, tx: TxRow): void {
   if (isBuyTx(tx.type)) {
     const qty = tx.quantity;
     // KRW 단가: unit_price 우선, 없으면 금액÷수량으로 추정
+    const krwAmt = Math.abs(tx.amount);
     const price =
-      tx.unit_price > 0
-        ? tx.unit_price
-        : qty > 0
-        ? Math.abs(tx.amount) / qty
-        : 0;
+      tx.unit_price > 0 ? tx.unit_price : qty > 0 ? krwAmt / qty : 0;
 
-    if (qty > 0 && price > 0) {
-      h.avgBuyPrice = calcMovingAvgPrice(h.quantity, h.avgBuyPrice, qty, price);
+    // USD 매입원가
+    const usdAmt = tx.foreign_currency === 'USD' ? Math.abs(tx.foreign_amount) : 0;
+    const usdPrice = qty > 0 && usdAmt > 0 ? usdAmt / qty : 0;
+
+    // 수량 업데이트: KRW 단가 또는 USD 단가 중 하나라도 있으면 수량 반영
+    // (해외주식은 amount=0이어서 price=0이 되지만 수량은 추적해야 함)
+    if (qty > 0 && (price > 0 || usdPrice > 0)) {
+      if (price > 0) {
+        h.avgBuyPrice = calcMovingAvgPrice(h.quantity, h.avgBuyPrice, qty, price);
+      }
       h.quantity += qty;
     }
-    // amount=0인 대체입고 등: qty×price로 매수원금 추정
-    const buyAmount = Math.abs(tx.amount) > 0 ? Math.abs(tx.amount) : qty * price;
+    // 매수원금: amount 또는 qty×price
+    const buyAmount = krwAmt > 0 ? krwAmt : qty * price;
     h.totalBuyAmount += buyAmount;
 
     // USD 매입원가 추적
-    if (tx.foreign_currency === 'USD' && tx.foreign_amount !== 0) {
-      const usdAmt = Math.abs(tx.foreign_amount);
-      const usdPrice = qty > 0 ? usdAmt / qty : 0;
+    if (usdAmt > 0) {
       if (qty > 0 && usdPrice > 0) {
         h.avgBuyPriceUsd = calcMovingAvgPrice(h.quantity - qty, h.avgBuyPriceUsd, qty, usdPrice);
       }
@@ -122,24 +128,25 @@ function applyTransaction(h: HoldingState, tx: TxRow): void {
 
   } else if (isSellTx(tx.type)) {
     const qty = tx.quantity;
+    const krwAmt = Math.abs(tx.amount);
     const price =
-      tx.unit_price > 0
-        ? tx.unit_price
-        : qty > 0
-        ? Math.abs(tx.amount) / qty
-        : 0;
+      tx.unit_price > 0 ? tx.unit_price : qty > 0 ? krwAmt / qty : 0;
 
-    if (qty > 0 && price > 0) {
-      h.realizedPnl += calcRealizedPnl(qty, price, h.avgBuyPrice);
+    const usdAmt = tx.foreign_currency === 'USD' ? Math.abs(tx.foreign_amount) : 0;
+    const usdPrice = qty > 0 && usdAmt > 0 ? usdAmt / qty : 0;
+
+    // 수량 차감: KRW 또는 USD 단가 중 하나라도 있으면
+    if (qty > 0 && (price > 0 || usdPrice > 0)) {
+      if (price > 0) {
+        h.realizedPnl += calcRealizedPnl(qty, price, h.avgBuyPrice);
+        h.totalBuyAmount = Math.max(0, h.totalBuyAmount - h.avgBuyPrice * qty);
+      }
       h.quantity = Math.max(0, h.quantity - qty);
-      // 매도된 비율만큼 총 매수원금 차감
-      h.totalBuyAmount = Math.max(0, h.totalBuyAmount - h.avgBuyPrice * qty);
     }
 
     // USD 실현손익 추적
-    if (tx.foreign_currency === 'USD' && tx.foreign_amount !== 0 && qty > 0) {
-      const usdSellPrice = Math.abs(tx.foreign_amount) / qty;
-      h.realizedPnlUsd += calcRealizedPnl(qty, usdSellPrice, h.avgBuyPriceUsd);
+    if (usdAmt > 0 && qty > 0) {
+      h.realizedPnlUsd += calcRealizedPnl(qty, usdPrice, h.avgBuyPriceUsd);
       h.totalBuyUsd = Math.max(0, h.totalBuyUsd - h.avgBuyPriceUsd * qty);
     }
   }
